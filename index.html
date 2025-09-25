@@ -1097,24 +1097,62 @@
   let _decisionsByMonth = new Map();
   let _techFromXML = null;
 
-  // ---- Fetch the local FRUS TEI XML ----
-  fetch('frus1981-88v44p1.xml', { cache: 'no-store' })
-    .then(r => r.text())
-    .then(txt => {
-      if (txt.includes('<html') && !/<TEI[\s>]/i.test(txt)) {
-        addMessage('FRUS file looks like an HTML page. Save the raw TEI XML (not the webpage).', 'critical');
-        wireMonthlyTimer(/*fallback*/true);
-        return;
+  // ---- Fetch the local FRUS TEI XML (more robust, clearer errors) ----
+(async function loadFRUS(){
+  const candidates = [
+    'frus1981-88v44p1.xml',
+    './frus1981-88v44p1.xml',
+    new URL('frus1981-88v44p1.xml', location.href).href
+  ];
+  let lastStatus = null, lastErr = null, lastURL = null;
+
+  for (const url of candidates) {
+    try {
+      lastURL = url;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        lastStatus = `${res.status} ${res.statusText}`;
+        console.warn(`[FRUS] HTTP error at ${url}: ${lastStatus}`);
+        continue;
       }
+      const txt = await res.text();
+
+      if (txt.includes('<html') && !/<TEI[\s>]/i.test(txt)) {
+        addMessage(`FRUS load error: got HTML instead of TEI at ${url}. Make sure you downloaded the RAW XML.`, 'critical');
+        console.error('[FRUS] Received HTML page, not TEI XML.', { url, sample: txt.slice(0, 300) });
+        // keep trying other candidates in case one resolves correctly
+        continue;
+      }
+
+      // Parse TEI
       _tei = new DOMParser().parseFromString(txt, 'text/xml');
+      const teiRoot = _tei.querySelector('TEI, tei\\:TEI');
+      if (!teiRoot) {
+        addMessage(`FRUS load error: parsed XML at ${url} but no <TEI> root found.`, 'critical');
+        console.error('[FRUS] No <TEI> root found at', url);
+        continue;
+      }
+
+      console.info('[FRUS] Loaded TEI from', url);
       indexFRUS();
       wireMonthlyTimer();
       addMessage('FRUS XML loaded. Monthly SDI decisions enabled.', 'success');
-    })
-    .catch(() => {
-      wireMonthlyTimer(/*fallback*/true);
-      addMessage('FRUS XML not found — running base gameplay only.', 'warning');
-    });
+      return; // success
+    } catch (e) {
+      lastErr = e;
+      console.error('[FRUS] Network error at', url, e);
+      continue;
+    }
+  }
+
+  // If we got here, all candidates failed:
+  wireMonthlyTimer(/*fallback*/true);
+  const hint = location.protocol === 'file:' 
+    ? ' (Hint: you opened this via file:// — run a local server, e.g. python3 -m http.server 8000)'
+    : '';
+  addMessage(`FRUS XML not found — running base gameplay only. Last tried: ${lastURL}${lastStatus ? ' ['+lastStatus+']' : ''}${hint}`, 'warning');
+})();
+
 
   // ---- TEI parsing & indexing (ABM/SDI/Congress/military focus) ----
   function indexFRUS(){
@@ -1477,6 +1515,7 @@
 
 </body>
 </html>
+
 
 
 
