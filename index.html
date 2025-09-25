@@ -591,7 +591,7 @@
     <script>
         // Game State
         const gameState = {
-            year: 1983,
+            year: 1985,
             budget: 3.8,
             maxBudget: 10,
             research: 0,
@@ -1005,7 +1005,7 @@
         }
     </script>
     <script>
-/* ========= FRUS TEI → MONTHLY SDI DECISIONS (1983–1988) =========
+/* ========= FRUS TEI → MONTHLY SDI DECISIONS (1985–1988) =========
    - Reads frus1981-88v44p1.xml in the same directory
    - Builds month-by-month decisions from *only* that content
    - Preserves your existing gameplay; just overrides timeline/decisions
@@ -1014,7 +1014,7 @@
 (function () {
   // ---- Monthly clock (1 month every 6 seconds) ----
   const TICK_MS = 6000; // 6s per month
-  const START = { y: 1983, m: 3 };   // March 1983 (SDI launch context)
+  const START = { y: 1985, m: 1 };   // January 1985 (Beginning of Second Reagan administration)
   const END   = { y: 1988, m: 12 };  // December 1988
   const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const fullMonthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -1394,5 +1394,6 @@
 
 </body>
 </html>
+
 
 
