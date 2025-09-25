@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDI Commander: Strategic Defense Initiative</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+            color: #0f0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #0f0;
+            padding-bottom: 20px;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            text-shadow: 0 0 20px #0f0;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #888;
+            font-size: 1.2em;
+        }
+        
+        .game-area {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .main-screen {
+            background: rgba(0, 20, 40, 0.8);
+            border: 2px solid #0f0;
+            border-radius: 10px;
+            padding: 20px;
+            min-height: 500px;
+        }
+        
+        .sidebar {
+            background: rgba(0, 20, 40, 0.8);
+            border: 2px solid #0f0;
+            border-radius: 10px;
+            padding: 15px;
+        }
+        
+        .resource-panel {
+            margin-bottom: 20px;
+        }
+        
+        .resource {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: rgba(0, 40, 0, 0.3);
+            border-radius: 5px;
+        }
+        
+        .resource-label {
+            font-size: 0.9em;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        
+        .resource-value {
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0f0, #0a0);
+            transition: width 0.3s ease;
+        }
+        
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .tech-card {
+            background: rgba(0, 40, 40, 0.4);
+            border: 1px solid #088;
+            border-radius: 5px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .tech-card:hover {
+            background: rgba(0, 60, 60, 0.6);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+        
+        .tech-card.researched {
+            background: rgba(0, 80, 0, 0.4);
+            border-color: #0f0;
+        }
+        
+        .tech-card.locked {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .tech-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #0ff;
+        }
+        
+        .tech-description {
+            font-size: 0.85em;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+        
+        .tech-cost {
+            font-size: 0.9em;
+            color: #fa0;
+        }
+        
+        .decision-panel {
+            background: rgba(40, 0, 0, 0.4);
+            border: 2px solid #f00;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .decision-panel.active {
+            display: block;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 10px rgba(255, 0, 0, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(255, 0, 0, 0.8); }
+        }
+        
+        .decision-title {
+            font-size: 1.5em;
+            color: #f00;
+            margin-bottom: 15px;
+        }
+        
+        .decision-text {
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        
+        .decision-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .decision-button {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            font-size: 1em;
+            text-align: left;
+        }
+        
+        .decision-button:hover {
+            background: linear-gradient(135deg, #2a2a3e, #26314e);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+        
+        .threat-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #f00;
+            border-radius: 10px;
+            padding: 15px;
+            min-width: 200px;
+            display: none;
+        }
+        
+        .threat-indicator.active {
+            display: block;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .threat-level {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .missile-count {
+            color: #f00;
+            font-size: 2em;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+        }
+        
+        .defense-screen {
+            display: none;
+            position: relative;
+            height: 400px;
+            background: radial-gradient(ellipse at center, rgba(0, 40, 0, 0.3), rgba(0, 0, 0, 0.8));
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .defense-screen.active {
+            display: block;
+        }
+        
+        .radar-sweep {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #0f0, transparent);
+            transform-origin: left center;
+            animation: sweep 4s linear infinite;
+        }
+        
+        @keyframes sweep {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .missile {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #f00;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #f00;
+        }
+        
+        .interceptor {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #0f0;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #0f0;
+        }
+        
+        .explosion {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #ff0, #f00, transparent);
+            animation: explode 0.5s ease-out forwards;
+        }
+        
+        @keyframes explode {
+            to {
+                transform: scale(3);
+                opacity: 0;
+            }
+        }
+        
+        .message-log {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #088;
+            border-radius: 5px;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+        
+        .message {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-left: 2px solid #088;
+            padding-left: 10px;
+        }
+        
+        .message.warning {
+            border-left-color: #fa0;
+            color: #fa0;
+        }
+        
+        .message.critical {
+            border-left-color: #f00;
+            color: #f00;
+        }
+        
+        .message.success {
+            border-left-color: #0f0;
+            color: #0f0;
+        }
+        
+        @media (max-width: 768px) {
+            .game-area {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 1.8em;
+            }
+            
+            .tech-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>SDI COMMANDER</h1>
+            <div class="subtitle">Strategic Defense Initiative - 1983-1988</div>
+        </div>
+        
+        <div class="game-area">
+            <div class="main-screen">
+                <div id="missionScreen">
+                    <h2>Mission Briefing</h2>
+                    <div class="mission-text" id="missionText">
+                        <p><strong>Date: March 23, 1983</strong></p>
+                        <p><strong>Location: Pentagon War Room</strong></p>
+                        <br>
+                        <p>Commander, President Reagan has just announced the Strategic Defense Initiative. You have been selected to lead this revolutionary program to render nuclear weapons "impotent and obsolete."</p>
+                        <br>
+                        <p>Your mission: Develop and deploy a multi-layered missile defense system capable of protecting America from Soviet ICBMs. Balance research priorities, manage Congressional funding battles, and navigate diplomatic pressures while racing against time.</p>
+                        <br>
+                        <p>The Soviets have over 1,400 ICBMs aimed at the United States. Can you build a shield strong enough to protect the free world?</p>
+                    </div>
+                    <br>
+                    <button class="decision-button" onclick="startGame()">Accept Command</button>
+                </div>
+                
+                <div id="gameScreen" style="display: none;">
+                    <h2>Technology Research</h2>
+                    <div class="tech-grid" id="techGrid"></div>
+                </div>
+                
+                <div class="defense-screen" id="defenseScreen">
+                    <div class="radar-sweep"></div>
+                </div>
+                
+                <div class="decision-panel" id="decisionPanel">
+                    <div class="decision-title" id="decisionTitle"></div>
+                    <div class="decision-text" id="decisionText"></div>
+                    <div class="decision-options" id="decisionOptions"></div>
+                </div>
+                
+                <div class="message-log" id="messageLog"></div>
+            </div>
+            
+            <div class="sidebar">
+                <div class="resource-panel">
+                    <div class="resource">
+                        <div class="resource-label">BUDGET</div>
+                        <div class="resource-value" id="budget">$3.8B</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="budgetBar" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="resource">
+                        <div class="resource-label">RESEARCH POINTS</div>
+                        <div class="resource-value" id="research">0</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="researchBar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="resource">
+                        <div class="resource-label">POLITICAL CAPITAL</div>
+                        <div class="resource-value" id="political">65</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="politicalBar" style="width: 65%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="resource">
+                        <div class="resource-label">DEFENSE READINESS</div>
+                        <div class="resource-value" id="defense">0%</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="defenseBar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="stats">
+                    <h3>Program Status</h3>
+                    <div style="margin-top: 10px; font-size: 0.9em;">
+                        <div>Year: <span id="currentYear">1983</span></div>
+                        <div>Technologies: <span id="techCount">0</span></div>
+                        <div>Interceptors: <span id="interceptorCount">0</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="threat-indicator" id="threatIndicator">
+        <div class="threat-level">⚠️ MISSILE THREAT ⚠️</div>
+        <div>Incoming ICBMs:</div>
+        <div class="missile-count" id="missileCount">0</div>
+    </div>
+    
+    <script>
+        // Game State
+        const gameState = {
+            year: 1983,
+            budget: 3.8,
+            maxBudget: 10,
+            research: 0,
+            maxResearch: 1000,
+            political: 65,
+            defense: 0,
+            technologies: [],
+            interceptors: 0,
+            currentDecision: null,
+            gameStarted: false
+        };
+        
+        // Technology Database
+        const technologies = [
+            {
+                id: 'hoe',
+                name: 'Homing Overlay Experiment',
+                description: 'Kinetic kill vehicle technology',
+                cost: 0.5,
+                researchCost: 100,
+                defenseBonus: 10,
+                type: 'midcourse'
+            },
+            {
+                id: 'miracl',
+                name: 'MIRACL Chemical Laser',
+                description: 'High-power ground-based laser',
+                cost: 1.2,
+                researchCost: 200,
+                defenseBonus: 15,
+                type: 'boost'
+            },
+            {
+                id: 'eris',
+                name: 'ERIS Interceptor',
+                description: 'Exoatmospheric hit-to-kill system',
+                cost: 0.8,
+                researchCost: 150,
+                defenseBonus: 12,
+                type: 'terminal'
+            },
+            {
+                id: 'sbi',
+                name: 'Space-Based Interceptors',
+                description: 'Orbital kinetic kill vehicles',
+                cost: 3.0,
+                researchCost: 500,
+                defenseBonus: 25,
+                type: 'boost'
+            },
+            {
+                id: 'bsts',
+                name: 'Boost Surveillance System',
+                description: 'Early warning satellites',
+                cost: 1.5,
+                researchCost: 250,
+                defenseBonus: 20,
+                type: 'sensor'
+            },
+            {
+                id: 'brilliant',
+                name: 'Brilliant Pebbles',
+                description: 'Autonomous space interceptors',
+                cost: 2.5,
+                researchCost: 400,
+                defenseBonus: 30,
+                type: 'midcourse'
+            },
+            {
+                id: 'xray',
+                name: 'X-Ray Laser',
+                description: 'Nuclear-pumped directed energy',
+                cost: 5.0,
+                researchCost: 800,
+                defenseBonus: 40,
+                type: 'boost'
+            },
+            {
+                id: 'particle',
+                name: 'Neutral Particle Beam',
+                description: 'Space-based discrimination',
+                cost: 2.0,
+                researchCost: 350,
+                defenseBonus: 18,
+                type: 'midcourse'
+            }
+        ];
+        
+        // Critical Decisions
+        const decisions = [
+            {
+                id: 'treaty',
+                year: 1984,
+                title: 'ABM Treaty Interpretation',
+                text: 'The State Department and Pentagon disagree on ABM Treaty interpretation. A broad interpretation would allow space testing but anger Congress. A narrow interpretation limits research but maintains support.',
+                options: [
+                    {
+                        text: 'Adopt broad interpretation - Unlock space tests, lose political support',
+                        effects: { political: -20, research: 200, defense: 10 }
+                    },
+                    {
+                        text: 'Maintain narrow interpretation - Limited research, keep support',
+                        effects: { political: 10, research: 50, defense: 5 }
+                    }
+                ]
+            },
+            {
+                id: 'congress',
+                year: 1985,
+                title: 'Congressional Funding Battle',
+                text: 'House Democrats threaten to cut SDI budget by 40%. You can fight for full funding, accept cuts, or make a compromise deal.',
+                options: [
+                    {
+                        text: 'Fight for full funding - Risk major cuts',
+                        effects: { budget: Math.random() > 0.5 ? 2 : -1.5, political: -15 }
+                    },
+                    {
+                        text: 'Accept moderate cuts - Preserve program',
+                        effects: { budget: -0.5, political: 5 }
+                    },
+                    {
+                        text: 'Trade MX missile for SDI support',
+                        effects: { budget: 1, political: 15, defense: -5 }
+                    }
+                ]
+            },
+            {
+                id: 'reykjavik',
+                year: 1986,
+                title: 'Reykjavik Summit',
+                text: 'Gorbachev offers historic arms reductions but demands SDI be confined to laboratories for 10 years. The President must decide.',
+                options: [
+                    {
+                        text: 'Accept laboratory restrictions - Historic agreement',
+                        effects: { political: 25, defense: -20, research: -300 }
+                    },
+                    {
+                        text: 'Reject Soviet terms - Preserve SDI',
+                        effects: { political: -10, defense: 15, research: 100 }
+                    }
+                ]
+            }
+        ];
+        
+        // Initialize Game
+        function startGame() {
+            gameState.gameStarted = true;
+            document.getElementById('missionScreen').style.display = 'none';
+            document.getElementById('gameScreen').style.display = 'block';
+            renderTechnologies();
+            updateUI();
+            addMessage('Strategic Defense Initiative program activated', 'success');
+            
+            // Start game loops
+            setInterval(gameLoop, 1000);
+            setInterval(yearlyUpdate, 10000); // Every 10 seconds = 1 year
+        }
+        
+        // Render Technology Cards
+        function renderTechnologies() {
+            const grid = document.getElementById('techGrid');
+            grid.innerHTML = '';
+            
+            technologies.forEach(tech => {
+                const card = document.createElement('div');
+                const isResearched = gameState.technologies.includes(tech.id);
+                const canAfford = gameState.budget >= tech.cost && gameState.research >= tech.researchCost;
+                
+                card.className = `tech-card ${isResearched ? 'researched' : ''} ${!canAfford && !isResearched ? 'locked' : ''}`;
+                card.innerHTML = `
+                    <div class="tech-name">${tech.name}</div>
+                    <div class="tech-description">${tech.description}</div>
+                    <div class="tech-cost">
+                        ${isResearched ? 'DEPLOYED' : `Cost: $${tech.cost}B | ${tech.researchCost} RP`}
+                    </div>
+                `;
+                
+                if (!isResearched && canAfford) {
+                    card.onclick = () => researchTechnology(tech);
+                }
+                
+                grid.appendChild(card);
+            });
+        }
+        
+        // Research Technology
+        function researchTechnology(tech) {
+            if (gameState.budget >= tech.cost && gameState.research >= tech.researchCost) {
+                gameState.budget -= tech.cost;
+                gameState.research -= tech.researchCost;
+                gameState.technologies.push(tech.id);
+                gameState.defense += tech.defenseBonus;
+                gameState.political += 5;
+                
+                if (tech.type === 'midcourse' || tech.type === 'terminal') {
+                    gameState.interceptors += Math.floor(tech.defenseBonus / 2);
+                }
+                
+                addMessage(`${tech.name} successfully deployed!`, 'success');
+                renderTechnologies();
+                updateUI();
+            }
+        }
+        
+        // Handle Decisions
+        function triggerDecision(decision) {
+            if (gameState.currentDecision) return;
+            
+            gameState.currentDecision = decision;
+            const panel = document.getElementById('decisionPanel');
+            panel.className = 'decision-panel active';
+            
+            document.getElementById('decisionTitle').textContent = decision.title;
+            document.getElementById('decisionText').textContent = decision.text;
+            
+            const optionsDiv = document.getElementById('decisionOptions');
+            optionsDiv.innerHTML = '';
+            
+            decision.options.forEach((option, index) => {
+                const button = document.createElement('button');
+                button.className = 'decision-button';
+                button.textContent = option.text;
+                button.onclick = () => makeDecision(index);
+                optionsDiv.appendChild(button);
+            });
+        }
+        
+        function makeDecision(optionIndex) {
+            const decision = gameState.currentDecision;
+            const option = decision.options[optionIndex];
+            
+            Object.keys(option.effects).forEach(key => {
+                if (key === 'budget') {
+                    gameState[key] = Math.max(0, Math.min(gameState.maxBudget, gameState[key] + option.effects[key]));
+                } else {
+                    gameState[key] = Math.max(0, Math.min(100, gameState[key] + option.effects[key]));
+                }
+            });
+            
+            addMessage(`Decision made: ${decision.title}`, 'warning');
+            document.getElementById('decisionPanel').className = 'decision-panel';
+            gameState.currentDecision = null;
+            updateUI();
+        }
+        
+        // Missile Defense Simulation
+        function simulateMissileAttack(missileCount) {
+            addMessage(`WARNING: ${missileCount} ICBMs detected!`, 'critical');
+            document.getElementById('threatIndicator').className = 'threat-indicator active';
+            document.getElementById('missileCount').textContent = missileCount;
+            
+            const defenseScreen = document.getElementById('defenseScreen');
+            defenseScreen.className = 'defense-screen active';
+            document.getElementById('gameScreen').style.display = 'none';
+            
+            let missilesDestroyed = 0;
+            const interceptionRate = Math.min(0.9, gameState.defense / 100);
+            
+            for (let i = 0; i < missileCount; i++) {
+                if (Math.random() < interceptionRate) {
+                    missilesDestroyed++;
+                }
+            }
+            
+            setTimeout(() => {
+                const survived = missileCount - missilesDestroyed;
+                if (survived === 0) {
+                    addMessage(`Perfect defense! All ${missileCount} missiles intercepted!`, 'success');
+                    gameState.political += 20;
+                } else if (survived < missileCount / 2) {
+                    addMessage(`Partial success: ${missilesDestroyed} of ${missileCount} missiles intercepted`, 'warning');
+                    gameState.political += 5;
+                } else {
+                    addMessage(`Defense failed! Only ${missilesDestroyed} of ${missileCount} missiles stopped`, 'critical');
+                    gameState.political -= 20;
+                }
+                
+                document.getElementById('threatIndicator').className = 'threat-indicator';
+                defenseScreen.className = 'defense-screen';
+                document.getElementById('gameScreen').style.display = 'block';
+                updateUI();
+            }, 5000);
+        }
+        
+        // Game Loop
+        function gameLoop() {
+            if (!gameState.gameStarted) return;
+            
+            // Generate research points
+            gameState.research = Math.min(gameState.maxResearch, gameState.research + gameState.technologies.length * 2);
+            
+            // Random events
+            if (Math.random() < 0.001) {
+                const missileCount = Math.floor(Math.random() * 10) + 1;
+                simulateMissileAttack(missileCount);
+            }
+            
+            updateUI();
+        }
+        
+        // Yearly Update
+        function yearlyUpdate() {
+            if (!gameState.gameStarted) return;
+            
+            gameState.year++;
+            gameState.budget = Math.min(gameState.maxBudget, gameState.budget + 2);
+            
+            // Check for decisions
+            const yearDecision = decisions.find(d => d.year === gameState.year);
+            if (yearDecision) {
+                triggerDecision(yearDecision);
+            }
+            
+            // Random budget changes
+            if (Math.random() < 0.3) {
+                const budgetChange = (Math.random() - 0.5) * 1.5;
+                gameState.budget = Math.max(0.5, Math.min(gameState.maxBudget, gameState.budget + budgetChange));
+                if (budgetChange > 0) {
+                    addMessage(`Congress approves $${Math.abs(budgetChange).toFixed(1)}B supplement`, 'success');
+                } else {
+                    addMessage(`Budget cut: $${Math.abs(budgetChange).toFixed(1)}B`, 'warning');
+                }
+            }
+            
+            // Check victory/defeat conditions
+            if (gameState.year >= 1993) {
+                if (gameState.defense >= 50) {
+                    alert('Victory! You successfully deployed the Strategic Defense Initiative!');
+                } else {
+                    alert('Program terminated. SDI failed to achieve viable defense capability.');
+                }
+                location.reload();
+            }
+            
+            updateUI();
+        }
+        
+        // Update UI
+        function updateUI() {
+            document.getElementById('budget').textContent = `$${gameState.budget.toFixed(1)}B`;
+            document.getElementById('budgetBar').style.width = `${(gameState.budget / gameState.maxBudget) * 100}%`;
+            
+            document.getElementById('research').textContent = gameState.research;
+            document.getElementById('researchBar').style.width = `${(gameState.research / gameState.maxResearch) * 100}%`;
+            
+            document.getElementById('political').textContent = gameState.political;
+            document.getElementById('politicalBar').style.width = `${gameState.political}%`;
+            
+            document.getElementById('defense').textContent = `${gameState.defense}%`;
+            document.getElementById('defenseBar').style.width = `${gameState.defense}%`;
+            
+            document.getElementById('currentYear').textContent = gameState.year;
+            document.getElementById('techCount').textContent = gameState.technologies.length;
+            document.getElementById('interceptorCount').textContent = gameState.interceptors;
+        }
+        
+        // Message System
+        function addMessage(text, type = '') {
+            const log = document.getElementById('messageLog');
+            const message = document.createElement('div');
+            message.className = `message ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            message.textContent = `[${timestamp}] ${text}`;
+            log.insertBefore(message, log.firstChild);
+            
+            while (log.children.length > 10) {
+                log.removeChild(log.lastChild);
+            }
+        }
+    </script>
+</body>
+</html>
