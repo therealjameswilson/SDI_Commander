@@ -1391,9 +1391,93 @@
   }
 })();
 </script>
+<script>
+// ===== Immediate Jan 1985 Decision (uses already-built TEI index) =====
+
+// If you used my monthly script, these globals will exist:
+//   _decisionsByMonth (Map), buildDecision(it), gameState, triggerDecision, addMessage
+// This add-on only wires an immediate decision for Jan 1985.
+
+(function () {
+  const BASE_HTML = 'frus1981-88v44p1.html'; // optional: used to make source links clickable
+
+  // Rank docs by relevance (ABM > Congress/Reykjavik > service > tech)
+  function _weight(x) {
+    return (x.isABM?4:0) + (x.isBudget?3:0) + (x.isReyk?3:0) + (x.isService?2:0) + (x.isTech?1:0);
+  }
+
+  function _showMonthlyDecision(y, m) {
+    if (!window._decisionsByMonth) return false;
+    const key = `${y}-${String(m).padStart(2,'0')}`;
+    const docs = _decisionsByMonth.get(key) || [];
+    if (!docs.length) return false;
+
+    const top = docs.slice().sort((a,b)=>_weight(b)-_weight(a))[0];
+    const dec = buildDecision(top);
+
+    // Point the source to your rendered HTML with the same xml:id
+    const txt = dec.text.replace('Source: #', `Source: ${BASE_HTML}#`);
+    triggerDecision({
+      id: dec.id,
+      year: dec.year,
+      title: `${dec.title} — ${["January","February","March","April","May","June","July","August","September","October","November","December"][(dec.month||1)-1]} ${dec.year}`,
+      text: txt,
+      options: dec.options
+    });
+
+    addMessage(`FRUS source available ${BASE_HTML}${dec.link}`, '');
+    return true;
+  }
+
+  // Fire as soon as the player starts OR as soon as XML is ready—whichever is later.
+  let _wantImmediateDecision = false;
+
+  // Wrap startGame to request an immediate decision for the current month
+  if (typeof window.startGame === 'function') {
+    const _origStartGame = window.startGame;
+    window.startGame = function () {
+      _origStartGame();
+      _wantImmediateDecision = true;
+      // If TEI is already indexed, show right now
+      if (_showMonthlyDecision(gameState.year, gameState.month)) {
+        _wantImmediateDecision = false;
+      }
+    };
+  }
+
+  // If TEI finishes loading after the game has started, show it then.
+  // Hook into the point right after your index function runs.
+  const _origIndexFRUS = window.indexFRUS;
+  if (typeof _origIndexFRUS === 'function') {
+    window.indexFRUS = function () {
+      _origIndexFRUS();
+      if (_wantImmediateDecision && gameState && gameState.gameStarted) {
+        if (_showMonthlyDecision(gameState.year, gameState.month)) {
+          _wantImmediateDecision = false;
+        }
+      }
+    };
+  }
+
+  // If your code doesn’t expose indexFRUS globally, fall back to polling briefly.
+  let _polls = 0;
+  const _poller = setInterval(() => {
+    _polls++;
+    if (!_wantImmediateDecision) { clearInterval(_poller); return; }
+    if (window._decisionsByMonth instanceof Map && window._decisionsByMonth.size) {
+      if (_showMonthlyDecision(gameState.year, gameState.month)) {
+        _wantImmediateDecision = false;
+        clearInterval(_poller);
+      }
+    }
+    if (_polls > 100) clearInterval(_poller); // stop after ~10s
+  }, 100);
+})();
+</script>
 
 </body>
 </html>
+
 
 
 
