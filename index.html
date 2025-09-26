@@ -945,81 +945,67 @@ PROGRAM STATUS
   }
 </script>
 
+
     <script>
-/* ========= FRUS TEI → MONTHLY SDI DECISIONS (1985–1988) =========
-   - Reads frus1981-88v44p1.xml in the same directory
-   - Builds month-by-month decisions from *only* that content
-   - Preserves your existing gameplay; just overrides timeline/decisions
-==================================================================*/
+/* ===================== NSA DESK + FRUS MONTHLY ENGINE (1985–1988) =====================
+   Drop-in replacement for:
+     1) FRUS TEI → Monthly SDI Decisions script
+     2) Immediate Jan 1985 Decision script
 
-(function () {
-  // ---- Monthly clock (1 month every 6 seconds) ----
-  const TICK_MS = 6000; // 6s per month
-  const START = { y: 1985, m: 1 };   // January 1985 (Beginning of Second Reagan administration)
-  const END   = { y: 1988, m: 12 };  // December 1988
-  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const fullMonthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+   Requires your base gameplay script (gameState, renderTechnologies, triggerDecision, updateUI, addMessage)
+   to be loaded BEFORE this block.
 
-  // ---- Preserve gameplay, add month field to the stats panel ----
+   What this adds:
+   - Monthly clock from Jan 1985 → Dec 1988 (6s/month)
+   - FRUS TEI XML loader (raw.githubusercontent.com first, with fallbacks)
+   - FRUS badge in sidebar header (auto toggled)
+   - NSA Desk pane (shows primary-source FRUS excerpt + actions)
+   - Expanded choices: ABM interpretations, SDI, Reykjavik contingencies, MX basing, congressional dynamics
+   - Uses ONLY content parsed from the FRUS XML to seed decisions (plus small chance modifiers)
+======================================================================================== */
+
+(function(){
+  /* -------------------- Config & Utilities -------------------- */
+  const TICK_MS = 6000; // 6 seconds = 1 month
+  const START = { y: 1985, m: 1 };
+  const END   = { y: 1988, m: 12 };
+  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+  // Ensure month field exists and override yearly loop
   gameState.year = START.y;
   gameState.month = START.m;
-  (function injectMonthRow(){
+
+  if (typeof window.yearlyUpdate === 'function') { window.yearlyUpdate = function(){}; }
+  if (!document.getElementById('currentMonthRow')) {
     const stats = document.querySelector('.stats-panel');
-    if (stats && !document.getElementById('currentMonthRow')) {
+    if (stats) {
       const row = document.createElement('div');
       row.className = 'stat-item';
       row.id = 'currentMonthRow';
-      row.innerHTML = '<span class="stat-label">Month:</span><span class="stat-value" id="currentMonth">' + gameState.month + '</span>';
+      row.innerHTML = '<span class="stat-label">Month:</span><span class="stat-value" id="currentMonth">1</span>';
       stats.insertBefore(row, stats.children[1]);
     }
-  })();
-
-  // ---- Small helpers ----
-  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
-  function yyyymm(y,m){ return y*100 + m; }
-  function nextMonth(y,m){ m++; if(m>12){ m=1; y++; } return {y,m}; }
-  function inRange(y,m){
-    const a=yyyymm(START.y,START.m), b=yyyymm(END.y,END.m), x=yyyymm(y,m);
-    return x>=a && x<=b;
   }
 
-  // ---- Improve message timestamps to display actual month names ----
+  // clamp helpers
+  const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+  const yyyymm = (y,m)=> y*100 + m;
+  const inRange = (y,m)=> yyyymm(y,m)>=yyyymm(START.y,START.m) && yyyymm(y,m)<=yyyymm(END.y,END.m);
+  function nextMonth(y,m){ m++; if(m>12){m=1;y++;} return {y,m}; }
+
+  // Improve timestamps to show current game month/year
   const _origAddMessage = window.addMessage;
   window.addMessage = function(text, type='') {
     const log = document.getElementById('messageLog');
     const message = document.createElement('div');
     message.className = `message ${type}`;
     const date = new Date();
-    const ts = `${monthNames[(gameState.month||1)-1]} ${date.getDate()}, ${gameState.year}`;
+    const ts = `${monthNames[(gameState.month||1)-1].slice(0,3)} ${date.getDate()}, ${gameState.year}`;
     message.textContent = `[${ts}] ${text}`;
     log.insertBefore(message, log.firstChild);
     while (log.children.length > 8) log.removeChild(log.lastChild);
   };
 
-  // ---- Show FRUS source link in the decision panel (if any) ----
-  const _origTriggerDecision = window.triggerDecision;
-  window.triggerDecision = function(decision) {
-    _origTriggerDecision(decision);
-    // Inject a source link row under the decision text, if 'source' is embedded in text
-    // (We pass links via "Source: #xml-id" line.)
-    const textEl = document.getElementById('decisionText');
-    if (textEl && /Source:\s+#/.test(textEl.textContent)) {
-      const idMatch = textEl.textContent.match(/Source:\s+(#\S+)/);
-      if (idMatch) {
-        const a = document.createElement('a');
-        a.textContent = 'View FRUS document';
-        a.href = idMatch[1];
-        a.style.display = 'inline-block';
-        a.style.marginTop = '8px';
-        a.className = 'frus-link';
-        a.target = '_blank';
-        textEl.appendChild(document.createElement('br'));
-        textEl.appendChild(a);
-      }
-    }
-  };
-
-  // ---- Update UI to reflect month field, keep your original ----
   const _origUpdateUI = window.updateUI;
   window.updateUI = function(){
     _origUpdateUI();
@@ -1027,308 +1013,40 @@ PROGRAM STATUS
     if (m) m.textContent = gameState.month;
   };
 
-  // ---- Disable yearly loop if present (we’ll drive time monthly) ----
-  if (typeof window.yearlyUpdate === 'function') {
-    try { clearInterval(window._yearTimer); } catch(e){}
-    window.yearlyUpdate = function(){}; // no-op
+  /* -------------------- FRUS Badge (auto toggled) -------------------- */
+  function ensureBadgeCSS(){
+    if (document.getElementById('badgeStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'badgeStyles';
+    style.textContent = `
+      .badge{display:inline-block;margin-left:8px;padding:2px 10px;font-size:.75em;font-weight:700;border-radius:12px;border:1px solid #4a7c59;background:#4a7c59;color:#fff;vertical-align:middle;letter-spacing:.5px}
+      .badge.off{border-color:#8a8a8a;background:#8a8a8a}
+      .nsa-desk{background:#fff;border:2px solid #8b3a21;box-shadow:0 2px 8px rgba(0,0,0,.12);padding:16px;margin-top:16px}
+      .nsa-desk h4{color:#8b3a21;margin-bottom:10px}
+      .nsa-doc{background:#faf8f3;border-left:3px solid #8b3a21;padding:12px;margin:10px 0;max-height:220px;overflow:auto}
+      .nsa-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}
+      .nsa-secondary{font-size:.85em;color:#5c4033;margin-top:8px}
+      .nsa-small{font-size:.85em;opacity:.8}
+      .nsa-inline{display:inline-block;margin-left:8px}
+      .nsa-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    `;
+    document.head.appendChild(style);
   }
+  ensureBadgeCSS();
 
-  // ---- TEI globals ----
-  let _tei = null;
-  let _decisionsByMonth = new Map();
-  let _techFromXML = null;
-</script>
-
-   <script>
-/* ---- Fetch the FRUS TEI XML (robust, CORS-friendly, cache-busting) ---- */
-(async function loadFRUS(){
-  // IMPORTANT: raw.githubusercontent.com has permissive CORS and is the most reliable
-  const RAW = 'https://raw.githubusercontent.com/therealjameswilson/SDI_Commander/main/frus1981-88v44p1.xml';
-
-  // For GitHub Pages project sites like https://therealjameswilson.github.io/SDI_Commander/...
-  const origin   = location.origin;                          // e.g., https://therealjameswilson.github.io
-  const basePath = location.pathname.replace(/[^/]+$/, '');  // e.g., /SDI_Commander/
-
-  // Candidate URLs (RAW first)
-  const candidates = [
-    RAW,
-    basePath + 'frus1981-88v44p1.xml',
-    basePath + 'data/frus1981-88v44p1.xml',
-    basePath + 'volumes/frus1981-88v44p1.xml',
-    origin + '/SDI_Commander/frus1981-88v44p1.xml',
-    origin + '/SDI_Commander/data/frus1981-88v44p1.xml',
-    origin + '/SDI_Commander/volumes/frus1981-88v44p1.xml'
-  ];
-
-  // Helper: append a cache-busting query
-  const withBust = (u) => u + (u.includes('?') ? '&' : '?') + 'cb=' + Date.now();
-
-  // Try each candidate, log exactly what happened
-  const attempts = [];
-  let _tei = null;
-
-  for (const url of candidates) {
-    const tryURL = withBust(url);
-    try {
-      const res = await fetch(tryURL, { cache: 'no-store' });
-      attempts.push({ url, ok: res.ok, status: res.status + ' ' + res.statusText });
-      if (!res.ok) continue;
-
-      const txt = await res.text();
-
-      // If GitHub returns an HTML "not found" page, skip
-      if (txt.toLowerCase().includes('<html') && !/<TEI[\s>]/i.test(txt)) {
-        attempts.push({ url, ok:false, status:'HTML page (not TEI XML)' });
-        continue;
-      }
-
-      const doc = new DOMParser().parseFromString(txt, 'text/xml');
-      if (!doc.querySelector('TEI, tei\\:TEI')) {
-        attempts.push({ url, ok:false, status:'Parsed but no <TEI> root' });
-        continue;
-      }
-
-      _tei = doc;
-      // Hand off to your existing indexer & timer (these are defined in your other script)
-      if (typeof indexFRUS === 'function') indexFRUS.call(window, _tei);
-      if (typeof wireMonthlyTimer === 'function') wireMonthlyTimer();
-      if (typeof addMessage === 'function') addMessage('FRUS XML loaded. Monthly SDI decisions enabled.', 'success');
-      return;
-    } catch (e) {
-      attempts.push({ url, ok:false, status:'JS exception: ' + (e && e.message ? e.message : e) });
-      continue;
+  // If the header <h3> doesn’t yet include the badge, inject it
+  (function ensureBadgeHost(){
+    const hdr = Array.from(document.querySelectorAll('.sidebar h3')).find(h=>/PROGRAM STATUS/i.test(h.textContent));
+    if (hdr && !document.getElementById('frusBadge')) {
+      const span = document.createElement('span');
+      span.id = 'frusBadge';
+      span.className = 'badge off';
+      span.textContent = 'FRUS FALLBACK';
+      span.title = 'FRUS XML not loaded';
+      hdr.appendChild(span);
     }
-  }
+  })();
 
-  // If we got here, everything failed—report the full attempt log
-  if (typeof addMessage === 'function') {
-    const last = attempts[attempts.length - 1] || {};
-    addMessage('FRUS XML not found — running base gameplay only.', 'warning');
-    attempts.forEach(a => addMessage(`Tried: ${a.url} [${a.status}]`, 'warning'));
-  }
-})();
-
-  // ---- TEI parsing & indexing (ABM/SDI/Congress/military focus) ----
-  function indexFRUS(){
-    const $ = (n,s) => Array.from(n.querySelectorAll(s));
-    const T = (n) => (n ? n.textContent.replace(/\s+/g,' ').trim() : '');
-
-    // Candidate docs; FRUS TEI uses <div type="document"> with xml:id and <head>, <p>, etc.
-    const docNodes = $(':root','div[type="document"], div[type="doc"], div[xml\\:id], div.doc, div.document');
-    const nodes = docNodes.length ? docNodes : Array.from(_tei.querySelectorAll('div'));
-
-    const KEY = [
-      /Strategic Defense Initiative|SDI\b/i,
-      /\bABM\b|anti-?ballistic|treaty interpretation|broad interpretation|laboratory/i,
-      /Reykjav[ií]k|H[oö]fði/i,
-      /Phase\s*I|deployment|architecture|IOC/i,
-      /Congress|Senate|House|Appropriations|Authorization|Budget|Markup|HASC|SASC|Nunn|Aspin|Proxmire/i,
-      /\bSDIO\b|HOE\b|MIRACL|ERIS\b|Brilliant Pebbles|Neutral Particle Beam|Excalibur|X-?Ray/i,
-      /\bJCS\b|Joint Chiefs|Air Force|Army|Navy|OSD|DOD|Secretary of Defense|Weinberger|Carlucci/i
-    ];
-
-    const DATE = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+(\d{4})\b/;
-    const MONEY = /\$?\s*(\d+(?:\.\d+)?)\s*(billion|bn|b|million|m)\b/ig;
-
-    const items = nodes
-      .filter(d => KEY.some(re => re.test(T(d).slice(0, 160000))))
-      .map(d => {
-        const id = d.getAttribute('xml:id') || d.getAttribute('id') || '';
-        const head = d.querySelector('head') || d.querySelector('p.head') || d.querySelector('p.title');
-        const title = head ? T(head) : (T(d).match(/^([A-Z0-9].{0,120}?)([\.\—:])/ )||['','(Untitled)'])[1];
-        const dateline = d.querySelector('dateline') || d.querySelector('p.dateline') || d.querySelector('note.dateline') || d;
-        const dm = T(dateline).match(DATE);
-        let year=null, month=null;
-        if (dm) { year=+dm[2]; month = fullMonthNames.indexOf(dm[1]) + 1; }
-        const full = T(d);
-
-        // extract $ (billions)
-        const money = [];
-        let m;
-        while ((m = MONEY.exec(full))) {
-          let v = parseFloat(m[1]);
-          const unit = (m[2]||'').toLowerCase();
-          v = unit.startsWith('b') ? v : v/1000;
-          money.push(v);
-        }
-
-        // flags
-        const isABM = /\babm\b|anti-?ballistic|treaty interpretation|broad interpretation|laboratory/i.test(full);
-        const isReyk = /reykjav|höfði|hofdi/i.test(full);
-        const isBudget = /appropriation|authorization|budget|committee|markup|supplemental|reduce|cut|increase/i.test(full);
-        const isService = /\bJCS\b|Joint Chiefs|Air Force|Army|Navy|OSD|DOD|service chief|Chairman\b/i.test(full);
-        const isTech = /HOE\b|MIRACL|ERIS\b|Brilliant Pebbles|Neutral Particle Beam|Excalibur|X-?Ray|boost|midcourse|terminal|discrimination|sensor/i.test(full);
-
-        // quote for decision text
-        let quote = '';
-        for (const p of d.querySelectorAll('p')) {
-          const tp = T(p);
-          if (tp.length > 120 && /(missile|defense|treaty|test|space|congress|budget|summit|proposal|interpretation)/i.test(tp)) {
-            quote = tp.slice(0, 280) + (tp.length>280 ? '…' : '');
-            break;
-          }
-        }
-        if (!quote) quote = full.slice(0, 260);
-
-        return { id, title, year, month, full, money, isABM, isReyk, isBudget, isService, isTech, quote, node: d };
-      })
-      .filter(x => x.year && inRange(x.year, x.month || 1));
-
-    // Index by month
-    _decisionsByMonth = new Map();
-    for (const it of items) {
-      const key = `${it.year}-${String(it.month||1).padStart(2,'0')}`;
-      if (!_decisionsByMonth.has(key)) _decisionsByMonth.set(key, []);
-      _decisionsByMonth.get(key).push(it);
-    }
-
-    // Optional: build technologies from FRUS (replacing hard-coded if present)
-    _techFromXML = deriveTechnologies(items);
-  }
-
-  function deriveTechnologies(items){
-    const seeds = [
-      { id:'hoe',       label:'Homing Overlay Experiment (HOE)', re:/\bHOE\b|Homing Overlay/i, def:10 },
-      { id:'miracl',    label:'MIRACL Chemical Laser',           re:/\bMIRACL\b|chemical laser/i, def:15 },
-      { id:'eris',      label:'ERIS (Exoatmospheric Interceptor)', re:/\bERIS\b|exoatmospheric/i, def:12 },
-      { id:'sbi',       label:'Space-Based Interceptors',        re:/space-?based (?:interceptor|kill|layer)/i, def:25 },
-      { id:'bsts',      label:'Boost Surveillance & Tracking',   re:/boost.*(surveillance|tracking)|\bBSTS\b/i, def:20 },
-      { id:'brilliant', label:'Brilliant Pebbles',               re:/Brilliant Pebbles/i, def:30 },
-      { id:'xray',      label:'X-Ray Laser (Excalibur)',         re:/Excalibur|X-?Ray Laser/i, def:40 },
-      { id:'neutral',   label:'Neutral Particle Beam',           re:/Neutral Particle Beam/i, def:18 }
-    ];
-
-    function mid(arr){ return arr.sort((a,b)=>a-b)[Math.floor(arr.length/2)]; }
-    function last(arr){ return arr[arr.length-1]; }
-
-    const out = [];
-    for (const s of seeds) {
-      const hits = items.filter(it => s.re.test(it.full));
-      if (!hits.length) continue;
-
-      // Cost in $B: median of doc dollars; fallback heuristic by tech
-      const bucks = hits.flatMap(h => h.money);
-      let costB = bucks.length ? clamp(mid(bucks), 0.2, 8.0)
-        : ({xray:5, sbi:3, brilliant:2.5, neutral:2, bsts:1.5, miracl:1.2, eris:0.8, hoe:0.5}[s.id] || 1.0);
-
-      // Research points scale with coverage
-      const research = clamp(Math.round(hits.reduce((a,b)=>a + b.full.length,0) / 80), 90, 900);
-
-      // Latest doc reference for description
-      const docRef = hits.sort((a,b)=>yyyymm(a.year,a.month||1)-yyyymm(b.year,b.month||1)).slice(-1)[0];
-
-      out.push({
-        id: s.id,
-        name: s.label,
-        description: `From FRUS: ${docRef.title}${docRef.year?` (${fullMonthNames[(docRef.month||1)-1]} ${docRef.year})`:''}`,
-        cost: costB,
-        researchCost: research,
-        defenseBonus: s.def,
-        type: /boost/i.test(s.label) ? 'boost' :
-              /terminal|exo/i.test(s.label) ? 'terminal' :
-              /midcourse|pebbles|overlay|ERIS/i.test(s.label) ? 'midcourse' : 'sensor',
-        __docRef: docRef
-      });
-    }
-    return out.length ? out : null;
-  }
-
-  // ---- Build a monthly decision from a single FRUS doc ----
-  function buildDecision(it){
-    // Budget delta from $ figures + language (cuts vs authorization)
-    let budgetDelta = 0;
-    if (it.money.length) {
-      const dollars = it.money.slice().sort((a,b)=>a-b);
-      const med = dollars[Math.floor(dollars.length/2)];
-      const hasCut = /\b(cut|reduce|reduction|freeze|cap|defer)\b/i.test(it.full);
-      const hasPlus = /\b(appropriate|authorize|increase|supplemental|approve|pass)\b/i.test(it.full);
-      budgetDelta = hasCut ? -med : (hasPlus ? +med : 0);
-      budgetDelta = clamp(budgetDelta, -3.0, 3.0);
-    }
-
-    // Political effects: Congress + service divergence
-    let pol = 0;
-    if (it.isBudget) {
-      if (/\b(cut|reduce|freeze)\b/i.test(it.full)) pol -= 12;
-      if (/\b(approve|support|authorize|pass|reaffirm)\b/i.test(it.full)) pol += 10;
-    }
-    if (it.isService) {
-      if (/\bconcern|skeptic|immature|not feasible|risk\b/i.test(it.full)) pol -= 6;
-      if (/\bsupport|endorse|advocate|IOC|deployment\b/i.test(it.full)) pol += 5;
-    }
-    pol = clamp(pol, -18, 15);
-
-    // Defense & Research: tests/tech/treaty choices
-    let def = 0, rp = 0;
-    if (it.isTech) { rp += 100; def += 6; }
-    if (/\btest|trial|demo|HOE|MIRACL|ERIS|Pebbles|beam|laser\b/i.test(it.full)) { rp += 60; def += 4; }
-    if (it.isABM) { rp += 40; def += 4; }
-    if (it.isReyk) { rp += 30; def += (/\blab(?:oratory)? (?:only|limits|restriction)\b/i.test(it.full)) ? -8 : 8; }
-    rp = clamp(rp, -300, 300);
-    def = clamp(def, -20, 20);
-
-    // Tailored options
-    const options = [];
-    if (it.isABM) {
-      options.push(
-        { text: 'Back “broad” ABM interpretation to enable space testing',
-          effects: { political: pol - 6, research: rp + 80, defense: def + 6, budget: budgetDelta } },
-        { text: 'Maintain “traditional” interpretation to safeguard talks',
-          effects: { political: pol + 8, research: rp + 20, defense: def + 2, budget: Math.min(0, budgetDelta) } }
-      );
-    } else if (it.isBudget) {
-      options.push(
-        { text: 'Full-court press for authorization/appropriation',
-          effects: { political: pol - 10, budget: Math.max(0.6, Math.abs(budgetDelta)||1.0) } },
-        { text: 'Accept trims to stabilize support',
-          effects: { political: pol + 8, budget: -Math.max(0.4, Math.abs(budgetDelta)/2 || 0.6) } }
-      );
-    } else if (it.isReyk) {
-      options.push(
-        { text: 'Accept lab-only SDI limits to unlock reductions',
-          effects: { political: pol + 15, research: rp - 120, defense: def - 10 } },
-        { text: 'Reject limits; preserve full SDI scope',
-          effects: { political: pol - 8, research: rp + 60, defense: def + 8 } }
-      );
-    } else if (it.isService) {
-      options.push(
-        { text: 'Side with SDIO/OSD to push advanced testing',
-          effects: { political: pol - 6, research: rp + 60, defense: def + 6, budget: Math.max(0, budgetDelta) } },
-        { text: 'Side with JCS caution; defer pending issues',
-          effects: { political: pol + 6, research: rp + 20, defense: def + 2 } }
-      );
-    } else {
-      options.push(
-        { text: 'Adopt an SDI-forward course',
-          effects: { political: pol - 4, research: rp + 40, defense: def + 4 } },
-        { text: 'Adopt an arms-control-forward course',
-          effects: { political: pol + 6, research: rp + 20, defense: def + 2 } }
-      );
-    }
-
-    const src = it.id ? `#${it.id}` : '';
-    return {
-      id: (it.id || (it.title.replace(/\W+/g,'_') + '_' + it.year)).toLowerCase(),
-      year: it.year,
-      month: it.month || 1,
-      title: it.title || 'Policy Decision',
-      text: `${it.quote}\n\nSource: ${src || '(local TEI document)'}`,
-      link: src,
-      options
-    };
-  }
-
-  // ---- Monthly timer (keeps your gameplay; just swaps the cadence to months) ----
-  function wireMonthlyTimer(fallback){
-    if (window._monthTimer) clearInterval(window._monthTimer);
-    window._monthTimer = setInterval(() => monthlyTick(!!fallback), TICK_MS);
-  }
-
-  function monthlyTick(fallback){
-    if (!gameState.gameStarted) return;
-
-// ===== FRUS badge wiring =====
-(function(){
   function setFrusBadge(active, info){
     const el = document.getElementById('frusBadge');
     if (!el) return;
@@ -1339,186 +1057,417 @@ PROGRAM STATUS
     } else {
       el.classList.add('off');
       el.textContent = 'FRUS FALLBACK';
-      el.title = 'Running without FRUS XML; using base gameplay events';
+      el.title = 'Running without FRUS XML (base gameplay events)';
     }
   }
-  // Expose globally so the loader can flip it
   window.setFrusBadge = setFrusBadge;
 
-  // Auto-detect after indexFRUS() populates decisions
-  function tryUpdate() {
-    const map = window._decisionsByMonth;
-    if (map instanceof Map && map.size) {
-      let docs = 0;
-      for (const arr of map.values()) docs += (arr?.length||0);
-      setFrusBadge(true, `${docs} FRUS docs across ${map.size} months`);
-      return true;
-    }
-    return false;
+  /* -------------------- NSA Desk Pane (UI) -------------------- */
+  function ensureNSADesk(){
+    if (document.getElementById('nsaDesk')) return;
+
+    const mainPanel = document.querySelector('.main-panel');
+    const desk = document.createElement('div');
+    desk.id = 'nsaDesk';
+    desk.className = 'nsa-desk';
+    desk.innerHTML = `
+      <h4>National Security Advisor Desk <span class="nsa-small nsa-inline" id="nsaDate"></span></h4>
+      <div class="nsa-secondary">Incoming FRUS brief (excerpt from the period record):</div>
+      <div class="nsa-doc" id="nsaDoc">No FRUS brief this month (fallback mode or no doc).</div>
+      <div class="nsa-secondary nsa-row">
+        <span id="nsaSource" class="nsa-small"></span>
+      </div>
+      <div class="nsa-actions" id="nsaActions"></div>
+    `;
+    // Place the desk right above the decision panel (if present) or at the bottom of main panel
+    const decisionPanel = document.getElementById('decisionPanel');
+    if (decisionPanel) mainPanel.insertBefore(desk, decisionPanel);
+    else mainPanel.appendChild(desk);
+  }
+  ensureNSADesk();
+
+  function setNSABrief({title, quote, link, when}){
+    const doc = document.getElementById('nsaDoc');
+    const src = document.getElementById('nsaSource');
+    const dt  = document.getElementById('nsaDate');
+    if (!doc || !src || !dt) return;
+
+    dt.textContent = when ? `— ${when}` : '';
+    doc.textContent = quote || 'No FRUS brief available.';
+    src.innerHTML = title ? `<strong>Doc:</strong> ${title}${link?` &middot; <a href="${link}" target="_blank">FRUS Source</a>`:''}` : '';
   }
 
-  if (!tryUpdate()) {
-    if (typeof window.indexFRUS === 'function') {
-      const _orig = window.indexFRUS;
-      window.indexFRUS = function(){
-        _orig.apply(this, arguments);
-        if (!tryUpdate()) setFrusBadge(false);
-      };
-    }
-    // Safety net: poll briefly until XML loads
-    let polls = 0;
-    const t = setInterval(() => {
-      if (tryUpdate()) { clearInterval(t); return; }
-      if (++polls > 100) { // stop after ~10s
-        setFrusBadge(false);
-        clearInterval(t);
-      }
-    }, 100);
-  }
-})();
-      
-    // Advance one month
-    const nm = nextMonth(gameState.year, gameState.month);
-    gameState.year = nm.y;
-    gameState.month = nm.m;
-
-    // Monthly budget trickle (scaled from your +2/year): about +0.18B/month
-    gameState.budget = clamp(gameState.budget + 0.18, 0, gameState.maxBudget);
-
-    addMessage(`Monthly update: ${fullMonthNames[gameState.month-1]} ${gameState.year}.`, '');
-
-    // Inject a decision for this month from FRUS, if available
-    if (!fallback && _decisionsByMonth.size) {
-      const key = `${gameState.year}-${String(gameState.month).padStart(2,'0')}`;
-      const docs = _decisionsByMonth.get(key) || [];
-      if (docs.length) {
-        // Prefer ABM/Congress/Reykjavík/service docs
-        const ranked = docs.sort((a,b)=>{
-          const w = (x)=> (x.isABM?4:0)+(x.isBudget?3:0)+(x.isReyk?3:0)+(x.isService?2:0)+(x.isTech?1:0);
-          return w(b)-w(a);
-        });
-        const top = ranked[0];
-        const dec = buildDecision(top);
-        triggerDecision({
-          id: dec.id,
-          year: dec.year,
-          title: `${dec.title} — ${fullMonthNames[(dec.month||1)-1]} ${dec.year}`,
-          text: dec.text,
-          options: dec.options
-        });
-        if (dec.link) addMessage(`FRUS source available ${dec.link}`, '');
-      }
-    }
-
-    // On first tick with FRUS tech set, replace hard-coded techs (but keep UI)
-    if (_tei && _techFromXML && !_techFromXML.__installed) {
-      if (Array.isArray(window.technologies)) window.technologies.length = 0;
-      window.technologies = _techFromXML.map(t => t);
-      _techFromXML.__installed = true;
-      renderTechnologies();
-      addMessage('Technologies derived from FRUS XML.', 'success');
-    }
-
-    updateUI();
-
-    // End of scenario
-    if (!inRange(gameState.year, gameState.month)) {
-      clearInterval(window._monthTimer);
-      if (gameState.defense >= 50) {
-        alert('MISSION ACCOMPLISHED\n\nYou successfully developed and deployed the Strategic Defense Initiative.\n\nFinal Defense Capability: ' + gameState.defense + '%\nTechnologies Deployed: ' + gameState.technologies.length);
-      } else {
-        alert('PROGRAM TERMINATED\n\nSDI failed to achieve minimum viable defense capability.\n\nFinal Defense Capability: ' + gameState.defense + '%');
-      }
-    }
-  }
-})();
-</script>
-<script>
-// ===== Immediate Jan 1985 Decision (uses already-built TEI index) =====
-
-// If you used my monthly script, these globals will exist:
-//   _decisionsByMonth (Map), buildDecision(it), gameState, triggerDecision, addMessage
-// This add-on only wires an immediate decision for Jan 1985.
-
-(function () {
-  const BASE_HTML = 'frus1981-88v44p1.html'; // optional: used to make source links clickable
-
-  // Rank docs by relevance (ABM > Congress/Reykjavik > service > tech)
-  function _weight(x) {
-    return (x.isABM?4:0) + (x.isBudget?3:0) + (x.isReyk?3:0) + (x.isService?2:0) + (x.isTech?1:0);
-  }
-
-  function _showMonthlyDecision(y, m) {
-    if (!window._decisionsByMonth) return false;
-    const key = `${y}-${String(m).padStart(2,'0')}`;
-    const docs = _decisionsByMonth.get(key) || [];
-    if (!docs.length) return false;
-
-    const top = docs.slice().sort((a,b)=>_weight(b)-_weight(a))[0];
-    const dec = buildDecision(top);
-
-    // Point the source to your rendered HTML with the same xml:id
-    const txt = dec.text.replace('Source: #', `Source: ${BASE_HTML}#`);
-    triggerDecision({
-      id: dec.id,
-      year: dec.year,
-      title: `${dec.title} — ${["January","February","March","April","May","June","July","August","September","October","November","December"][(dec.month||1)-1]} ${dec.year}`,
-      text: txt,
-      options: dec.options
+  function setNSAOptions(options){
+    const box = document.getElementById('nsaActions');
+    if (!box) return;
+    box.innerHTML = '';
+    (options || []).forEach((opt,i)=>{
+      const b = document.createElement('button');
+      b.className = 'decision-button';
+      b.textContent = opt.text;
+      b.onclick = ()=> opt.onchoose && opt.onchoose();
+      box.appendChild(b);
     });
-
-    addMessage(`FRUS source available ${BASE_HTML}${dec.link}`, '');
-    return true;
   }
 
-  // Fire as soon as the player starts OR as soon as XML is ready—whichever is later.
-  let _wantImmediateDecision = false;
+  /* -------------------- FRUS TEI Loader & Index -------------------- */
+  let _tei = null;
+  let _decisionsByMonth = new Map();
+  window._decisionsByMonth = _decisionsByMonth; // expose for debugging
 
-  // Wrap startGame to request an immediate decision for the current month
-  if (typeof window.startGame === 'function') {
-    const _origStartGame = window.startGame;
-    window.startGame = function () {
-      _origStartGame();
-      _wantImmediateDecision = true;
-      // If TEI is already indexed, show right now
-      if (_showMonthlyDecision(gameState.year, gameState.month)) {
-        _wantImmediateDecision = false;
+  (async function loadFRUS(){
+    const origin = location.origin;
+    const basePath = location.pathname.replace(/[^/]+$/, '');
+    const candidates = [
+      'https://raw.githubusercontent.com/therealjameswilson/SDI_Commander/main/frus1981-88v44p1.xml', // best bet
+      basePath + 'frus1981-88v44p1.xml',
+      basePath + 'data/frus1981-88v44p1.xml',
+      basePath + 'volumes/frus1981-88v44p1.xml',
+      origin + '/SDI_Commander/frus1981-88v44p1.xml',
+      origin + '/SDI_Commander/data/frus1981-88v44p1.xml',
+      origin + '/SDI_Commander/volumes/frus1981-88v44p1.xml'
+    ];
+
+    let lastURL=null,lastStatus='';
+    for (const url of candidates) {
+      try {
+        lastURL = url;
+        const res = await fetch(url, { cache:'no-store' });
+        if (!res.ok) { lastStatus = ` [${res.status} ${res.statusText||''}]`; continue; }
+        const txt = await res.text();
+        if (txt.includes('<html') && !/<TEI[\s>]/i.test(txt)) continue;
+        _tei = new DOMParser().parseFromString(txt, 'text/xml');
+        if (!_tei.querySelector('TEI, tei\\:TEI')) continue;
+        indexFRUS();
+        // Badge on
+        let docs=0; for(const arr of _decisionsByMonth.values()) docs += (arr?.length||0);
+        setFrusBadge(true, `${docs} FRUS docs across ${_decisionsByMonth.size} months`);
+        addMessage('FRUS XML loaded. Monthly NSA briefs enabled.', 'success');
+        return;
+      } catch(e){ /* try next */ }
+    }
+    // Fallback
+    setFrusBadge(false);
+    addMessage(`FRUS XML not found — running base gameplay only. Last tried: ${lastURL||''}${lastStatus}`, 'warning');
+  })();
+
+  function indexFRUS(){
+    const $ = (n,s)=> Array.from(n.querySelectorAll(s));
+    const T = (n)=> (n ? n.textContent.replace(/\s+/g,' ').trim() : '');
+    const DATE = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+(19\d{2})\b/;
+    const MONEY = /\$?\s*(\d+(?:\.\d+)?)\s*(billion|bn|b|million|m)\b/ig;
+
+    // Likely doc containers
+    const docNodes = _tei.querySelectorAll('div[type="document"], div[type="doc"], div.doc, div.document, div[xml\\:id]');
+    const nodes = docNodes.length ? Array.from(docNodes) : Array.from(_tei.querySelectorAll('div'));
+
+    const KEYS = [
+      /Strategic Defense Initiative|SDI\b/i,
+      /\bABM\b|anti-?ballistic|treaty interpretation|broad interpretation|laboratory/i,
+      /Reykjav[ií]k|H[oö]fði/i,
+      /Phase\s*I|deployment|architecture|IOC/i,
+      /Congress|Senate|House|Appropriations|Authorization|Budget|Markup|HASC|SASC|Nunn|Aspin|Proxmire/i,
+      /\bSDIO\b|HOE\b|MIRACL|ERIS\b|Brilliant Pebbles|Neutral Particle Beam|Excalibur|X-?Ray/i,
+      /\bJCS\b|Joint Chiefs|Air Force|Army|Navy|OSD|DOD|Secretary of Defense|Weinberger|Carlucci/i,
+      /\bMX\b|Peacekeeper|basing|dense pack|rail garrison/i
+    ];
+
+    const items = nodes
+      .filter(d => KEYS.some(re => re.test(T(d).slice(0,200000))))
+      .map(d => {
+        const id = d.getAttribute('xml:id') || d.getAttribute('id') || '';
+        const head = d.querySelector('head') || d.querySelector('p.head') || d.querySelector('p.title');
+        const title = head ? T(head) : (T(d).match(/^([A-Z0-9].{0,120}?)([.:—])/ )||['','(Untitled)'])[1];
+        const dl = d.querySelector('dateline, p.dateline, note.dateline') || d;
+        const m = T(dl).match(DATE);
+        let year=null, month=null;
+        if (m){ year=+m[2]; month = monthNames.indexOf(m[1]) + 1; }
+
+        const full = T(d);
+
+        // collect $B figures (normalize to billions)
+        const money=[]; let mm;
+        while((mm = MONEY.exec(full))){
+          let v = parseFloat(mm[1]); const unit=(mm[2]||'').toLowerCase();
+          v = unit.startsWith('b') ? v : v/1000;
+          money.push(v);
+        }
+
+        const isABM = /\babm\b|anti-?ballistic|treaty interpretation|broad interpretation|laboratory/i.test(full);
+        const isReyk= /reykjav|höfði|hofdi/i.test(full);
+        const isBudget=/appropriation|authorization|budget|committee|markup|supplemental|reduce|cut|increase/i.test(full);
+        const isService=/\bJCS\b|Joint Chiefs|Air Force|Army|Navy|OSD|DOD|service chief|Chairman\b/i.test(full);
+        const isTech=/HOE\b|MIRACL|ERIS\b|Brilliant Pebbles|Neutral Particle Beam|Excalibur|X-?Ray|boost|midcourse|terminal|discrimination|sensor/i.test(full);
+        const isMX=/\bMX\b|Peacekeeper|dense pack|rail garrison|basing/i.test(full);
+
+        // choose an excerpt paragraph
+        let quote = '';
+        for (const p of d.querySelectorAll('p')) {
+          const tp = T(p);
+          if (tp.length > 120 && /(missile|defense|treaty|test|space|congress|budget|summit|proposal|interpretation|basing|mx|peacekeeper)/i.test(tp)) {
+            quote = tp.slice(0, 600) + (tp.length>600 ? '…' : '');
+            break;
+          }
+        }
+        if (!quote) quote = full.slice(0, 500);
+
+        return { id, title, year, month, full, money, isABM, isReyk, isBudget, isService, isTech, isMX, quote };
+      })
+      .filter(x => x.year && x.month && inRange(x.year, x.month));
+
+    _decisionsByMonth = new Map();
+    for (const it of items) {
+      const key = `${it.year}-${String(it.month).padStart(2,'0')}`;
+      if (!_decisionsByMonth.has(key)) _decisionsByMonth.set(key, []);
+      _decisionsByMonth.get(key).push(it);
+    }
+    window._decisionsByMonth = _decisionsByMonth; // refresh exposed ref
+  }
+
+  /* -------------------- Decision Builder (NSA choices) -------------------- */
+  function buildDecision(it){
+    // Infer budget delta from $ values + verb cues
+    let budgetDelta = 0;
+    if (it.money.length){
+      const sorted = it.money.slice().sort((a,b)=>a-b);
+      const med = sorted[Math.floor(sorted.length/2)];
+      const cut = /\b(cut|reduce|reduction|freeze|cap|defer)\b/i.test(it.full);
+      const plus= /\b(appropriate|authorize|increase|supplemental|approve|pass|fund)\b/i.test(it.full);
+      budgetDelta = cut ? -med : (plus ? +med : 0);
+      budgetDelta = clamp(budgetDelta, -3.0, 3.0);
+    }
+
+    let pol = 0, def = 0, rp = 0;
+    if (it.isBudget){ if (/\b(cut|reduce|freeze)\b/i.test(it.full)) pol -= 12; if (/\b(approve|support|authorize|pass|reaffirm)\b/i.test(it.full)) pol += 10; }
+    if (it.isService){ if (/\bconcern|skeptic|immature|not feasible|risk|viability\b/i.test(it.full)) pol -= 6; if (/\bsupport|endorse|advocate|deployment|IOC\b/i.test(it.full)) pol += 5; }
+    if (it.isTech){ rp += 100; def += 6; }
+    if (/\btest|trial|demo|HOE|MIRACL|ERIS|Pebbles|beam|laser|particle|x-ray\b/i.test(it.full)){ rp += 60; def += 4; }
+    if (it.isABM){ rp += 40; def += 4; }
+    if (it.isReyk){ rp += 30; def += (/\blab(?:oratory)? (?:only|limits|restriction)\b/i.test(it.full)) ? -8 : 8; }
+    rp = clamp(rp, -300, 300);
+    def = clamp(def, -20, 20);
+
+    const srcHash = it.id ? `#${it.id}` : '';
+    const when = `${monthNames[it.month-1]} ${it.year}`;
+
+    // Core options (NSA framing)
+    const options = [];
+
+    if (it.isABM){
+      options.push(
+        { label: 'Side with DoD: Broad ABM interpretation → enable space testing',
+          eff: { political: pol-6, research: rp+90, defense: def+6, budget: budgetDelta } },
+        { label: 'Side with State: Traditional interpretation to protect talks',
+          eff: { political: pol+8, research: rp+20, defense: def+2, budget: Math.min(0,budgetDelta) } },
+        { label: 'Brief the President: present split memo; seek guidance',
+          eff: { political: pol+2, research: rp+35, defense: def+3 } }
+      );
+    }
+
+    if (it.isBudget){
+      options.push(
+        { label: 'Hill push: mobilize WH for full authorization/appropriation',
+          eff: { political: pol-10, budget: Math.max(0.6, Math.abs(budgetDelta)||1.0) } },
+        { label: 'Accept trims to stabilize coalition',
+          eff: { political: pol+8, budget: -Math.max(0.4, Math.abs(budgetDelta)/2 || 0.6) } }
+      );
+    }
+
+    if (it.isReyk){
+      options.push(
+        { label: 'Advise go to Reykjavik, accept lab-only SDI limits for reductions',
+          eff: { political: pol+15, research: rp-120, defense: def-10 } },
+        { label: 'Advise go, but reject SDI limits; preserve full scope',
+          eff: { political: pol-8, research: rp+60, defense: def+8 } },
+        { label: 'Recommend not to go (contingency path)',
+          eff: { political: pol-6, research: rp+10, defense: def+2, meta:'noReyk' } }
+      );
+    }
+
+    if (it.isMX){
+      // MX/Peacekeeper basing tradeoffs grounded in FRUS: dense pack vs rail vs silo upgrades
+      options.push(
+        { label: 'Back MX “Dense Pack” concept (concentrated silos)',
+          eff: { political: -8, budget: +0.8, defense: +6, research: +20 } },
+        { label: 'Support “Rail Garrison” mobile basing',
+          eff: { political: +6, budget: +1.2, defense: +8, research: +30 } },
+        { label: 'Defer basing; keep limited procurement',
+          eff: { political: +4, budget: -0.4, defense: +2, research: +10 } }
+      );
+    }
+
+    // Generic SDI-forward vs Arms-control-forward fallback
+    if (!options.length){
+      options.push(
+        { label: 'SDI-forward course',
+          eff: { political: pol-4, research: rp+40, defense: def+4, budget: Math.max(0,budgetDelta) } },
+        { label: 'Arms-control-forward course',
+          eff: { political: pol+6, research: rp+20, defense: def+2, budget: Math.min(0,budgetDelta) } }
+      );
+    }
+
+    // Convert to NSA action buttons with luck factor
+    const nsaOptions = options.map(o => ({
+      text: o.label,
+      onchoose: ()=>{
+        const jitter = ()=> (Math.random() - 0.5); // small chance noise
+        const eff = Object.assign({}, o.eff);
+        // apply effects
+        for (const k of Object.keys(eff)){
+          if (k==='budget'){
+            gameState.budget = clamp(gameState.budget + eff[k], 0, gameState.maxBudget);
+          } else if (k==='research'){
+            gameState.research = clamp(gameState.research + eff[k] + Math.round(10*jitter()), 0, gameState.maxResearch);
+          } else if (k==='defense'){
+            gameState.defense = clamp(gameState.defense + eff[k] + Math.round(2*jitter()), 0, 100);
+          } else if (k==='political'){
+            gameState.political = clamp(gameState.political + eff[k] + Math.round(2*jitter()), 0, 100);
+          } else if (k==='meta' && eff[k]==='noReyk'){
+            // contingency flag for later branches
+            gameState.noReyk = true;
+          }
+        }
+        addMessage(`NSA action taken: ${o.label}`, 'warning');
+        updateUI();
+      }
+    }));
+
+    // Return a structure for both NSA Desk and classic decision panel
+    return {
+      when,
+      nsa: {
+        title: it.title,
+        quote: it.quote,
+        link: it.id ? (`frus1981-88v44p1.html#${it.id}`) : '',
+        options: nsaOptions
+      },
+      // Optional: classic panel if you still want to pop it
+      panel: {
+        id: (it.id || (it.title.replace(/\W+/g,'_') + '_' + it.year)).toLowerCase(),
+        title: `${it.title} — ${when}`,
+        text: `${it.quote}\n\nSource: ${it.id?('#'+it.id):'(local TEI document)'}`
       }
     };
   }
 
-  // If TEI finishes loading after the game has started, show it then.
-  // Hook into the point right after your index function runs.
-  const _origIndexFRUS = window.indexFRUS;
-  if (typeof _origIndexFRUS === 'function') {
-    window.indexFRUS = function () {
-      _origIndexFRUS();
-      if (_wantImmediateDecision && gameState && gameState.gameStarted) {
-        if (_showMonthlyDecision(gameState.year, gameState.month)) {
-          _wantImmediateDecision = false;
+  /* -------------------- Monthly Timer -------------------- */
+  function wireMonthlyTimer(){
+    if (window._monthTimer) clearInterval(window._monthTimer);
+    window._monthTimer = setInterval(monthlyTick, TICK_MS);
+  }
+  wireMonthlyTimer();
+
+  function monthlyTick(){
+    if (!gameState.gameStarted) return;
+
+    // advance month
+    const nm = nextMonth(gameState.year, gameState.month);
+    gameState.year = nm.y;
+    gameState.month = nm.m;
+
+    // monthly budget trickle (about +0.18B/month ~= +2B/year)
+    gameState.budget = clamp(gameState.budget + 0.18, 0, gameState.maxBudget);
+    addMessage(`Monthly update: ${monthNames[gameState.month-1]} ${gameState.year}.`, '');
+
+    // If FRUS docs indexed for this month, show NSA brief
+    const key = `${gameState.year}-${String(gameState.month).padStart(2,'0')}`;
+    const docs = (_decisionsByMonth && _decisionsByMonth.get(key)) || [];
+    if (docs.length){
+      // weight ABM > Congress/Reyk > Service > Tech > MX to pick the top doc
+      const w = (x)=> (x.isABM?5:0)+(x.isBudget?4:0)+(x.isReyk?4:0)+(x.isService?3:0)+(x.isMX?3:0)+(x.isTech?2:0);
+      const top = docs.slice().sort((a,b)=>w(b)-w(a))[0];
+      const built = buildDecision(top);
+
+      // NSA desk
+      setNSABrief({ title: built.nsa.title, quote: built.nsa.quote, link: built.nsa.link, when: built.when });
+      setNSAOptions(built.nsa.options);
+
+      // Optional: if you also want to light up the classic decision panel:
+      triggerDecision({
+        id: built.panel.id,
+        year: gameState.year,
+        title: built.panel.title,
+        text: built.panel.text,
+        options: built.nsa.options.map(o=>({ text:o.text, effects:{} , _on:o.onchoose }))
+      });
+
+      // Hook classic decision buttons to NSA effects
+      const btns = document.querySelectorAll('#decisionOptions .decision-button');
+      btns.forEach((b, i)=>{
+        const handler = built.nsa.options[i] && built.nsa.options[i].onchoose;
+        if (handler) b.onclick = ()=>{ handler(); document.getElementById('decisionPanel').className='decision-panel'; gameState.currentDecision=null; };
+      });
+
+      // Reykjavik contingency follow-on
+      if (top.isReyk && gameState.noReyk){
+        addMessage('Contingency in effect: NSA advised against Reykjavik; arms-control track cools temporarily.', 'warning');
+        gameState.political = clamp(gameState.political - 5, 0, 100);
+        gameState.research  = clamp(gameState.research + 20, 0, gameState.maxResearch);
+      }
+    } else {
+      // No doc this month; clear NSA actions but keep panel
+      setNSABrief({ title:'', quote:'No FRUS brief this month (no indexed doc).', link:'', when:`${monthNames[gameState.month-1]} ${gameState.year}` });
+      setNSAOptions([]);
+    }
+
+    // Install: if FRUS-derived technologies were built elsewhere, we could swap here
+    // (Keeping your current tech list for stability.)
+
+    updateUI();
+
+    // scenario end
+    if (!inRange(gameState.year, gameState.month)){
+      clearInterval(window._monthTimer);
+      if (gameState.defense >= 50) {
+        alert('MISSION ACCOMPLISHED\n\nYou successfully managed the NSC process and SDI trajectory.\n\nFinal Defense Capability: ' + gameState.defense + '%\nTechnologies Deployed: ' + gameState.technologies.length);
+      } else {
+        alert('PROGRAM TERMINATED\n\nDefense capability fell short.\n\nFinal Defense Capability: ' + gameState.defense + '%');
+      }
+    }
+  }
+
+  /* -------------------- Start-game hook: immediate monthly brief if ready -------------------- */
+  if (typeof window.startGame === 'function'){
+    const _origStart = window.startGame;
+    window.startGame = function(){
+      _origStart();
+      // fire one synthetic tick to show the first month's brief immediately
+      // (without advancing the calendar twice)
+      const key = `${gameState.year}-${String(gameState.month).padStart(2,'0')}`;
+      if (_decisionsByMonth && _decisionsByMonth.get(key)){
+        // simulate just the UI portion of monthlyTick
+        addMessage(`Monthly update: ${monthNames[gameState.month-1]} ${gameState.year}.`, '');
+        const docs = _decisionsByMonth.get(key) || [];
+        if (docs.length){
+          const w = (x)=> (x.isABM?5:0)+(x.isBudget?4:0)+(x.isReyk?4:0)+(x.isService?3:0)+(x.isMX?3:0)+(x.isTech?2:0);
+          const top = docs.slice().sort((a,b)=>w(b)-w(a))[0];
+          const built = buildDecision(top);
+          setNSABrief({ title: built.nsa.title, quote: built.nsa.quote, link: built.nsa.link, when: built.when });
+          setNSAOptions(built.nsa.options);
+          triggerDecision({
+            id: built.panel.id,
+            year: gameState.year,
+            title: built.panel.title,
+            text: built.panel.text,
+            options: built.nsa.options.map(o=>({ text:o.text, effects:{}, _on:o.onchoose }))
+          });
+          const btns = document.querySelectorAll('#decisionOptions .decision-button');
+          btns.forEach((b, i)=>{
+            const handler = built.nsa.options[i] && built.nsa.options[i].onchoose;
+            if (handler) b.onclick = ()=>{ handler(); document.getElementById('decisionPanel').className='decision-panel'; gameState.currentDecision=null; };
+          });
+          updateUI();
         }
       }
     };
   }
 
-  // If your code doesn’t expose indexFRUS globally, fall back to polling briefly.
-  let _polls = 0;
-  const _poller = setInterval(() => {
-    _polls++;
-    if (!_wantImmediateDecision) { clearInterval(_poller); return; }
-    if (window._decisionsByMonth instanceof Map && window._decisionsByMonth.size) {
-      if (_showMonthlyDecision(gameState.year, gameState.month)) {
-        _wantImmediateDecision = false;
-        clearInterval(_poller);
-      }
-    }
-    if (_polls > 100) clearInterval(_poller); // stop after ~10s
-  }, 100);
 })();
 </script>
 
 </body>
 </html>
+
 
 
 
