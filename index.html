@@ -592,24 +592,6 @@
   <div id="nscDocs" class="document-feed"></div>
   <button class="decision-button" onclick="closeNSCDesk()">Return to Situation Room</button>
 </div>
-function openNSCDesk(docs) {
-  const feed = document.getElementById('nscDocs');
-  feed.innerHTML = '';
-  docs.forEach(doc => {
-    const card = document.createElement('div');
-    card.className = 'document-text';
-    card.innerHTML = `<strong>${doc.title}</strong> (${doc.year})<br>${doc.quote}<br>
-      <a href="#${doc.id}" target="_blank" class="frus-link">View Full Document</a>`;
-    feed.appendChild(card);
-  });
-  document.getElementById('nscDesk').style.display = 'block';
-  document.getElementById('gameScreen').style.display = 'none';
-}
-
-function closeNSCDesk() {
-  document.getElementById('nscDesk').style.display = 'none';
-  document.getElementById('gameScreen').style.display = 'block';
-}
 
     <script>
   // ======= Core Helpers =======
@@ -1476,6 +1458,7 @@ function closeNSCDesk() {
 
 </body>
 </html>
+
 
 
 
