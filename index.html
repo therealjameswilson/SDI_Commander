@@ -1649,9 +1649,152 @@ function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
 
 })();
 </script>
+<script>
+// ================== FRUS-MONTH DECISION BRIDGE ==================
+// Requirements: your TEI loader built _decisionsByMonth (Map) and buildDecision(it)
+// If TEI isn't loaded, we fall back to "no decision this month" without adding fake ones.
+
+// --- Config ---
+const MONTH_TICK_MS = 6000; // 1 month = 6s (tune as you like)
+const START_MONTH = 1;      // January
+const END_FRAME = { y: 1988, m: 12 }; // end of scenario
+
+// --- Ensure month exists on gameState and show in stats once ---
+(function ensureMonthUI(){
+  if (typeof gameState.month !== 'number') gameState.month = START_MONTH;
+  const stats = document.querySelector('.stats-panel');
+  if (stats && !document.getElementById('currentMonthRow')) {
+    const row = document.createElement('div');
+    row.className = 'stat-item';
+    row.id = 'currentMonthRow';
+    row.innerHTML = '<span class="stat-label">Month:</span><span class="stat-value" id="currentMonth">'+gameState.month+'</span>';
+    stats.insertBefore(row, stats.children[1]);
+  }
+  // Patch updateUI to keep Month refreshed
+  const _u = window.updateUI;
+  window.updateUI = function(){
+    _u();
+    const m = document.getElementById('currentMonth');
+    if (m) m.textContent = gameState.month;
+  };
+})();
+
+// --- Turn off yearly "canned" decisions ---
+(function neuterYearlyDecisions(){
+  // Keep your budget/year mechanics, but do NOT insert decisions here
+  const _yearly = window.yearlyUpdate;
+  window.yearlyUpdate = function(){
+    if (!gameState.gameStarted) return;
+    // Advance fiscal year and add appropriation exactly like before
+    gameState.year++;
+    gameState.budget = Math.min(gameState.maxBudget, gameState.budget + 2);
+    addMessage(`FY${gameState.year} Congressional appropriation received`, '');
+
+    // Optional: keep random budget drift
+    if (Math.random() < 0.3 && !gameState.currentDecision) {
+      const budgetChange = (Math.random() - 0.5) * 1.5;
+      gameState.budget = Math.max(0.5, Math.min(gameState.maxBudget, gameState.budget + budgetChange));
+      if (budgetChange > 0) addMessage(`Congress approves $${Math.abs(budgetChange).toFixed(1)}B supplemental`, 'success');
+      else addMessage(`Budget reduction: $${Math.abs(budgetChange).toFixed(1)}B`, 'warning');
+    }
+
+    // *** DO NOT: trigger canned decisions here ***
+    // Victory check stays the same
+    if (gameState.year >= 1993) {
+      if (gameState.defense >= 50) {
+        alert('MISSION ACCOMPLISHED\n\nYou successfully developed and deployed the Strategic Defense Initiative.\n\nFinal Defense Capability: ' + gameState.defense + '%\nTechnologies Deployed: ' + gameState.technologies.length);
+      } else {
+        alert('PROGRAM TERMINATED\n\nSDI failed to achieve minimum viable defense capability.\n\nFinal Defense Capability: ' + gameState.defense + '%');
+      }
+      location.reload();
+    }
+    updateUI();
+  };
+})();
+
+// --- Monthly clock that only emits decisions found in _decisionsByMonth for that month ---
+(function wireMonthlyFRUS(){
+  let monthTimer = null;
+  let lastDecisionKey = null; // "YYYY-MM" guard so we only trigger once per month
+
+  function nextMonth(y,m){ m++; if (m>12){ m=1; y++; } return { y, m }; }
+  function inRange(y,m){
+    const toNum = (Y,M)=>Y*100+M;
+    const start = toNum(1985, 1);
+    const end   = toNum(END_FRAME.y, END_FRAME.m);
+    const cur   = toNum(y, m);
+    return cur>=start && cur<=end;
+  }
+
+  function monthLabel(m){
+    const full = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    return full[m-1] || m;
+  }
+
+  async function tick(){
+    if (!gameState.gameStarted) return;
+
+    // advance
+    const nm = nextMonth(gameState.year, gameState.month);
+    gameState.year = nm.y;
+    gameState.month = nm.m;
+
+    addMessage(`Monthly update: ${monthLabel(gameState.month)} ${gameState.year}.`, '');
+
+    // Only pull a decision that actually exists for this month in FRUS
+    const key = `${gameState.year}-${String(gameState.month).padStart(2, '0')}`;
+    if (key !== lastDecisionKey && window._decisionsByMonth instanceof Map) {
+      const docs = _decisionsByMonth.get(key) || [];
+      if (docs.length) {
+        // Prefer ABM/SDI/Congress/military documents (weighting)
+        const weight = (x)=>(x.isABM?4:0)+(x.isBudget?3:0)+(x.isReyk?3:0)+(x.isService?2:0)+(x.isTech?1:0);
+        const top = docs.slice().sort((a,b)=>weight(b)-weight(a))[0];
+        const dec = buildDecision(top);
+        triggerDecision({
+          id: dec.id,
+          year: dec.year,
+          title: `${dec.title} — ${monthLabel(dec.month||gameState.month)} ${dec.year}`,
+          text: dec.text,
+          options: dec.options
+        });
+        lastDecisionKey = key;
+      } else {
+        // No FRUS decision this month — do nothing (no fake cards)
+      }
+    } else {
+      // TEI not loaded yet — silently skip (no fake cards)
+    }
+
+    updateUI();
+
+    // end-of-scenario guard
+    if (!inRange(gameState.year, gameState.month)) {
+      clearInterval(monthTimer);
+      if (gameState.defense >= 50) {
+        alert('MISSION ACCOMPLISHED\n\nYou successfully developed and deployed the Strategic Defense Initiative.\n\nFinal Defense Capability: ' + gameState.defense + '%\nTechnologies Deployed: ' + gameState.technologies.length);
+      } else {
+        alert('PROGRAM TERMINATED\n\nSDI failed to achieve minimum viable defense capability.\n\nFinal Defense Capability: ' + gameState.defense + '%');
+      }
+    }
+  }
+
+  // start the monthly loop when the player starts
+  const _start = window.startGame;
+  window.startGame = function(){
+    _start();
+    // force Jan 1985 start (if not already)
+    gameState.year = 1985;
+    gameState.month = 1;
+    updateUI();
+    if (monthTimer) clearInterval(monthTimer);
+    monthTimer = setInterval(tick, MONTH_TICK_MS);
+  };
+})();
+</script>
 
 </body>
 </html>
+
 
 
 
