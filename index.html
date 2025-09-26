@@ -589,421 +589,340 @@
     </div>
     
     <script>
-        // Game State
-        const gameState = {
-            year: 1985,
-            budget: 3.8,
-            maxBudget: 10,
-            research: 0,
-            maxResearch: 1000,
-            political: 65,
-            defense: 0,
-            technologies: [],
-            interceptors: 0,
-            testsRun: 0,
-            testsSuccessful: 0,
-            currentDecision: null,
-            gameStarted: false
-        };
-        
-        // Technology Database (from FRUS documents)
-        const technologies = [
-            {
-                id: 'hoe',
-                name: 'Homing Overlay Experiment (HOE)',
-                description: 'Kinetic energy interceptor system',
-                cost: 0.5,
-                researchCost: 100,
-                defenseBonus: 10,
-                type: 'midcourse'
-            },
-            {
-                id: 'miracl',
-                name: 'MIRACL Chemical Laser',
-                description: 'Mid-Infrared Advanced Chemical Laser',
-                cost: 1.2,
-                researchCost: 200,
-                defenseBonus: 15,
-                type: 'boost'
-            },
-            {
-                id: 'eris',
-                name: 'ERIS System',
-                description: 'Exoatmospheric Reentry-vehicle Interceptor',
-                cost: 0.8,
-                researchCost: 150,
-                defenseBonus: 12,
-                type: 'terminal'
-            },
-            {
-                id: 'sbi',
-                name: 'Space-Based Interceptors',
-                description: 'Orbital kinetic kill vehicles',
-                cost: 3.0,
-                researchCost: 500,
-                defenseBonus: 25,
-                type: 'boost'
-            },
-            {
-                id: 'bsts',
-                name: 'Boost Surveillance & Tracking',
-                description: 'Early warning satellite constellation',
-                cost: 1.5,
-                researchCost: 250,
-                defenseBonus: 20,
-                type: 'sensor'
-            },
-            {
-                id: 'brilliant',
-                name: 'Brilliant Pebbles',
-                description: 'Autonomous orbital interceptors',
-                cost: 2.5,
-                researchCost: 400,
-                defenseBonus: 30,
-                type: 'midcourse'
-            },
-            {
-                id: 'xray',
-                name: 'X-Ray Laser (Excalibur)',
-                description: 'Nuclear-pumped directed energy',
-                cost: 5.0,
-                researchCost: 800,
-                defenseBonus: 40,
-                type: 'boost'
-            },
-            {
-                id: 'neutral',
-                name: 'Neutral Particle Beam',
-                description: 'Discrimination and kill assessment',
-                cost: 2.0,
-                researchCost: 350,
-                defenseBonus: 18,
-                type: 'midcourse'
-            }
-        ];
-        
-        // Historical Decision Points (from FRUS)
-        const decisions = [
-            {
-                id: 'treaty84',
-                year: 1984,
-                title: 'NSC Meeting: ABM Treaty Interpretation',
-                text: 'The Legal Adviser and Defense Department present conflicting interpretations of ABM Treaty constraints. DoD argues for "broad interpretation" permitting development and testing of space-based systems. State Department warns this could collapse arms control negotiations.',
-                options: [
-                    {
-                        text: 'Support broad interpretation - Accelerate space-based development',
-                        effects: { political: -20, research: 200, defense: 10 }
-                    },
-                    {
-                        text: 'Maintain traditional interpretation - Preserve diplomatic options',
-                        effects: { political: 10, research: 50, defense: 5 }
-                    }
-                ]
-            },
-            {
-                id: 'congress85',
-                year: 1985,
-                title: 'Congressional Budget Resolution',
-                text: 'House Armed Services Committee proposes 40% reduction in SDI funding. Senator Nunn questions program feasibility. Pentagon requests emergency supplemental appropriation.',
-                options: [
-                    {
-                        text: 'Mobilize Presidential support for full funding',
-                        effects: { budget: Math.random() > 0.5 ? 2 : -1.5, political: -15 }
-                    },
-                    {
-                        text: 'Accept Committee recommendations',
-                        effects: { budget: -0.8, political: 5 }
-                    },
-                    {
-                        text: 'Trade MX missile program for SDI funding',
-                        effects: { budget: 1, political: 15, defense: -5 }
-                    }
-                ]
-            },
-            {
-                id: 'reykjavik86',
-                year: 1986,
-                title: 'Reykjavik Summit Crisis',
-                text: 'General Secretary Gorbachev proposes elimination of all ballistic missiles contingent on SDI laboratory restriction for 10 years. President Reagan must respond.',
-                options: [
-                    {
-                        text: 'Accept laboratory limitations - Historic arms reduction',
-                        effects: { political: 25, defense: -20, research: -300 }
-                    },
-                    {
-                        text: 'Reject Soviet proposal - Preserve SDI development',
-                        effects: { political: -10, defense: 15, research: 100 }
-                    }
-                ]
-            },
-            {
-                id: 'phase87',
-                year: 1987,
-                title: 'Phase I Architecture Decision',
-                text: 'SDIO presents deployment options to NSC. Space-based architecture offers superior coverage but raises treaty concerns. Ground-based system is treaty-compliant but provides limited defense.',
-                options: [
-                    {
-                        text: 'Approve space-based architecture',
-                        effects: { defense: 20, political: -15, budget: -2 }
-                    },
-                    {
-                        text: 'Select ground-based deployment',
-                        effects: { defense: 10, political: 10, budget: -1 }
-                    },
-                    {
-                        text: 'Defer deployment decision pending further research',
-                        effects: { research: 150, political: 5, defense: 5 }
-                    }
-                ]
-            }
-        ];
-        
-        // Initialize Game
-        function startGame() {
-            gameState.gameStarted = true;
-            document.getElementById('missionScreen').style.display = 'none';
-            document.getElementById('gameScreen').style.display = 'block';
-            renderTechnologies();
-            updateUI();
-            addMessage('SDI Program activated per Presidential directive', 'success');
-            addMessage('Initial appropriation: $3.8 billion (FY1985)', '');
-            
-            // Start game loops
-            setInterval(gameLoop, 1000);
-            setInterval(yearlyUpdate, 12000); // Every 12 seconds = 1 year
-        }
-        
-        // Render Technology Cards
-        function renderTechnologies() {
-            const grid = document.getElementById('techGrid');
-            grid.innerHTML = '';
-            
-            technologies.forEach(tech => {
-                const card = document.createElement('div');
-                const isResearched = gameState.technologies.includes(tech.id);
-                const canAfford = gameState.budget >= tech.cost && gameState.research >= tech.researchCost;
-                
-                card.className = `tech-card ${isResearched ? 'researched' : ''} ${!canAfford && !isResearched ? 'locked' : ''}`;
-                card.innerHTML = `
-                    <div class="tech-name">${tech.name}</div>
-                    <div class="tech-description">${tech.description}</div>
-                    <div class="tech-cost">
-                        ${isResearched ? 'STATUS: OPERATIONAL' : `Requirements: $${tech.cost}B | ${tech.researchCost} RP`}
-                    </div>
-                `;
-                
-                if (!isResearched && canAfford) {
-                    card.onclick = () => researchTechnology(tech);
-                }
-                
-                grid.appendChild(card);
-            });
-        }
-        
-        // Research Technology
-        function researchTechnology(tech) {
-            if (gameState.budget >= tech.cost && gameState.research >= tech.researchCost) {
-                gameState.budget -= tech.cost;
-                gameState.research -= tech.researchCost;
-                gameState.technologies.push(tech.id);
-                gameState.defense += tech.defenseBonus;
-                gameState.political += 5;
-                gameState.testsRun++;
-                gameState.testsSuccessful++;
-                
-                if (tech.type === 'midcourse' || tech.type === 'terminal') {
-                    gameState.interceptors += Math.floor(tech.defenseBonus / 2);
-                }
-                
-                addMessage(`${tech.name} deployment authorized and operational`, 'success');
-                renderTechnologies();
-                updateUI();
-            }
-        }
-        
-        // Handle Decisions
-        function triggerDecision(decision) {
-            if (gameState.currentDecision) return;
-            
-            gameState.currentDecision = decision;
-            const panel = document.getElementById('decisionPanel');
-            panel.className = 'decision-panel active';
-            
-            document.getElementById('decisionTitle').textContent = decision.title;
-            document.getElementById('decisionText').textContent = decision.text;
-            
-            const optionsDiv = document.getElementById('decisionOptions');
-            optionsDiv.innerHTML = '';
-            
-            decision.options.forEach((option, index) => {
-                const button = document.createElement('button');
-                button.className = 'decision-button';
-                button.textContent = option.text;
-                button.onclick = () => makeDecision(index);
-                optionsDiv.appendChild(button);
-            });
-            
-            addMessage(`PRIORITY: ${decision.title}`, 'critical');
-        }
-        
-        function makeDecision(optionIndex) {
-            const decision = gameState.currentDecision;
-            const option = decision.options[optionIndex];
-            
-            Object.keys(option.effects).forEach(key => {
-                if (key === 'budget') {
-                    gameState[key] = Math.max(0, Math.min(gameState.maxBudget, gameState[key] + option.effects[key]));
-                } else if (key === 'research') {
-                    gameState[key] = Math.max(0, Math.min(gameState.maxResearch, gameState[key] + option.effects[key]));
-                } else {
-                    gameState[key] = Math.max(0, Math.min(100, gameState[key] + option.effects[key]));
-                }
-            });
-            
-            addMessage(`Decision recorded: ${decision.title}`, 'warning');
-            document.getElementById('decisionPanel').className = 'decision-panel';
-            gameState.currentDecision = null;
-            updateUI();
-        }
-        
-        // Missile Defense Simulation
-        function simulateMissileAttack(missileCount) {
-            addMessage(`FLASH PRIORITY: ${missileCount} Soviet ICBMs detected by NORAD`, 'critical');
-            document.getElementById('threatIndicator').className = 'threat-indicator active';
-            document.getElementById('missileCount').textContent = missileCount;
-            
-            const defenseScreen = document.getElementById('defenseScreen');
-            defenseScreen.className = 'defense-screen active';
-            document.getElementById('gameScreen').style.display = 'none';
-            
-            gameState.testsRun++;
-            let missilesDestroyed = 0;
-            const interceptionRate = Math.min(0.9, gameState.defense / 100);
-            
-            for (let i = 0; i < missileCount; i++) {
-                if (Math.random() < interceptionRate) {
-                    missilesDestroyed++;
-                }
-            }
-            
-            if (missilesDestroyed > 0) {
-                gameState.testsSuccessful++;
-            }
-            
-            setTimeout(() => {
-                const survived = missileCount - missilesDestroyed;
-                if (survived === 0) {
-                    addMessage(`DEFENSE SUCCESS: All ${missileCount} targets neutralized`, 'success');
-                    gameState.political = Math.min(100, gameState.political + 20);
-                } else if (survived < missileCount / 2) {
-                    addMessage(`PARTIAL SUCCESS: ${missilesDestroyed}/${missileCount} intercepted, ${survived} leaked through`, 'warning');
-                    gameState.political += 5;
-                } else {
-                    addMessage(`DEFENSE FAILURE: Only ${missilesDestroyed}/${missileCount} intercepted`, 'critical');
-                    gameState.political = Math.max(0, gameState.political - 20);
-                }
-                
-                document.getElementById('threatIndicator').className = 'threat-indicator';
-                defenseScreen.className = 'defense-screen';
-                document.getElementById('gameScreen').style.display = 'block';
-                updateUI();
-            }, 5000);
-        }
-        
-        // Game Loop
-        function gameLoop() {
-            if (!gameState.gameStarted) return;
-            
-            // Generate research points
-            gameState.research = Math.min(gameState.maxResearch, gameState.research + gameState.technologies.length * 2);
-            
-            // Random threat events
-            if (Math.random() < 0.001) {
-                const missileCount = Math.floor(Math.random() * 10) + 1;
-                simulateMissileAttack(missileCount);
-            }
-            
-            updateUI();
-        }
-        
-        // Yearly Update
-        function yearlyUpdate() {
-            if (!gameState.gameStarted) return;
-            
-            gameState.year++;
-            gameState.budget = Math.min(gameState.maxBudget, gameState.budget + 2);
-            
-            addMessage(`FY${gameState.year} Congressional appropriation received`, '');
-            
-            // Check for historical decisions
-            const yearDecision = decisions.find(d => d.year === gameState.year);
-            if (yearDecision) {
-                triggerDecision(yearDecision);
-            }
-            
-            // Random Congressional actions
-            if (Math.random() < 0.3 && !gameState.currentDecision) {
-                const budgetChange = (Math.random() - 0.5) * 1.5;
-                gameState.budget = Math.max(0.5, Math.min(gameState.maxBudget, gameState.budget + budgetChange));
-                if (budgetChange > 0) {
-                    addMessage(`Congress approves $${Math.abs(budgetChange).toFixed(1)}B supplemental`, 'success');
-                } else {
-                    addMessage(`Budget reduction: $${Math.abs(budgetChange).toFixed(1)}B`, 'warning');
-                }
-            }
-            
-            // Check victory/defeat conditions
-            if (gameState.year >= 1993) {
-                if (gameState.defense >= 50) {
-                    alert('MISSION ACCOMPLISHED\n\nYou successfully developed and deployed the Strategic Defense Initiative.\n\nFinal Defense Capability: ' + gameState.defense + '%\nTechnologies Deployed: ' + gameState.technologies.length);
-                } else {
-                    alert('PROGRAM TERMINATED\n\nSDI failed to achieve minimum viable defense capability.\n\nFinal Defense Capability: ' + gameState.defense + '%');
-                }
-                location.reload();
-            }
-            
-            updateUI();
-        }
-        
-        // Update UI
-        function updateUI() {
-            document.getElementById('budget').textContent = `$${gameState.budget.toFixed(1)}B`;
-            document.getElementById('budgetBar').style.width = `${(gameState.budget / gameState.maxBudget) * 100}%`;
-            
-            document.getElementById('research').textContent = gameState.research;
-            document.getElementById('researchBar').style.width = `${(gameState.research / gameState.maxResearch) * 100}%`;
-            
-            document.getElementById('political').textContent = `${gameState.political}%`;
-            document.getElementById('politicalBar').style.width = `${gameState.political}%`;
-            
-            document.getElementById('defense').textContent = `${gameState.defense}%`;
-            document.getElementById('defenseBar').style.width = `${gameState.defense}%`;
-            
-            document.getElementById('currentYear').textContent = gameState.year;
-            document.getElementById('techCount').textContent = gameState.technologies.length;
-            document.getElementById('interceptorCount').textContent = gameState.interceptors;
-            
-            const successRate = gameState.testsRun > 0 
-                ? Math.round((gameState.testsSuccessful / gameState.testsRun) * 100) + '%'
-                : 'N/A';
-            document.getElementById('successRate').textContent = successRate;
-        }
-        
-        // Message System
-        function addMessage(text, type = '') {
-            const log = document.getElementById('messageLog');
-            const message = document.createElement('div');
-            message.className = `message ${type}`;
-            const date = new Date();
-            const timestamp = `${date.getMonth() + 1}/${date.getDate()}/${gameState.year}`;
-            message.textContent = `[${timestamp}] ${text}`;
-            log.insertBefore(message, log.firstChild);
-            
-            while (log.children.length > 8) {
-                log.removeChild(log.lastChild);
-            }
-        }
-    </script>
+  // ======= Core Helpers =======
+  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+  function pct(v){ return clamp(v, 0, 100); }
+
+  // ======= Game State =======
+  const gameState = {
+    year: 1985,
+    budget: 3.8,
+    maxBudget: 10,
+    research: 0,
+    maxResearch: 1000,
+    political: 65,
+    defense: 0,
+    technologies: [],
+    interceptors: 0,
+    testsRun: 0,
+    testsSuccessful: 0,
+    currentDecision: null,
+    gameStarted: false
+  };
+
+  // Ensure sidebar FY shows 1985 even before the first update
+  document.addEventListener('DOMContentLoaded', () => {
+    const yr = document.getElementById('currentYear');
+    if (yr) yr.textContent = gameState.year;
+  });
+
+  // ======= Technology Database (initial seeds; may be overwritten by FRUS script) =======
+  // Define on window so other scripts (FRUS loader) can replace or mutate this array.
+  window.technologies = [
+    { id:'hoe',      name:'Homing Overlay Experiment (HOE)', description:'Kinetic energy interceptor system', cost:0.5, researchCost:100, defenseBonus:10, type:'midcourse' },
+    { id:'miracl',   name:'MIRACL Chemical Laser',           description:'Mid-Infrared Advanced Chemical Laser', cost:1.2, researchCost:200, defenseBonus:15, type:'boost' },
+    { id:'eris',     name:'ERIS System',                     description:'Exoatmospheric Reentry-vehicle Interceptor', cost:0.8, researchCost:150, defenseBonus:12, type:'terminal' },
+    { id:'sbi',      name:'Space-Based Interceptors',        description:'Orbital kinetic kill vehicles', cost:3.0, researchCost:500, defenseBonus:25, type:'boost' },
+    { id:'bsts',     name:'Boost Surveillance & Tracking',   description:'Early warning satellite constellation', cost:1.5, researchCost:250, defenseBonus:20, type:'sensor' },
+    { id:'brilliant',name:'Brilliant Pebbles',               description:'Autonomous orbital interceptors', cost:2.5, researchCost:400, defenseBonus:30, type:'midcourse' },
+    { id:'xray',     name:'X-Ray Laser (Excalibur)',         description:'Nuclear-pumped directed energy', cost:5.0, researchCost:800, defenseBonus:40, type:'boost' },
+    { id:'neutral',  name:'Neutral Particle Beam',           description:'Discrimination and kill assessment', cost:2.0, researchCost:350, defenseBonus:18, type:'midcourse' }
+  ];
+
+  // ======= Historical Decision Points (kept as-is; 1984 item will be handled by your monthly/FRUS system) =======
+  const decisions = [
+    {
+      id: 'treaty84',
+      year: 1984,
+      title: 'NSC Meeting: ABM Treaty Interpretation',
+      text: 'The Legal Adviser and Defense Department present conflicting interpretations of ABM Treaty constraints. DoD argues for "broad interpretation" permitting development and testing of space-based systems. State Department warns this could collapse arms control negotiations.',
+      options: [
+        { text: 'Support broad interpretation - Accelerate space-based development', effects: { political: -20, research: 200, defense: 10 } },
+        { text: 'Maintain traditional interpretation - Preserve diplomatic options', effects: { political: 10, research: 50, defense: 5 } }
+      ]
+    },
+    {
+      id: 'congress85',
+      year: 1985,
+      title: 'Congressional Budget Resolution',
+      text: 'House Armed Services Committee proposes 40% reduction in SDI funding. Senator Nunn questions program feasibility. Pentagon requests emergency supplemental appropriation.',
+      options: [
+        { text: 'Mobilize Presidential support for full funding', effects: { budget: Math.random() > 0.5 ? 2 : -1.5, political: -15 } },
+        { text: 'Accept Committee recommendations', effects: { budget: -0.8, political: 5 } },
+        { text: 'Trade MX missile program for SDI funding', effects: { budget: 1, political: 15, defense: -5 } }
+      ]
+    },
+    {
+      id: 'reykjavik86',
+      year: 1986,
+      title: 'Reykjavik Summit Crisis',
+      text: 'General Secretary Gorbachev proposes elimination of all ballistic missiles contingent on SDI laboratory restriction for 10 years. President Reagan must respond.',
+      options: [
+        { text: 'Accept laboratory limitations - Historic arms reduction', effects: { political: 25, defense: -20, research: -300 } },
+        { text: 'Reject Soviet proposal - Preserve SDI development', effects: { political: -10, defense: 15, research: 100 } }
+      ]
+    },
+    {
+      id: 'phase87',
+      year: 1987,
+      title: 'Phase I Architecture Decision',
+      text: 'SDIO presents deployment options to NSC. Space-based architecture offers superior coverage but raises treaty concerns. Ground-based system is treaty-compliant but provides limited defense.',
+      options: [
+        { text: 'Approve space-based architecture', effects: { defense: 20, political: -15, budget: -2 } },
+        { text: 'Select ground-based deployment', effects: { defense: 10, political: 10, budget: -1 } },
+        { text: 'Defer deployment decision pending further research', effects: { research: 150, political: 5, defense: 5 } }
+      ]
+    }
+  ];
+
+  // ======= Initialize Game =======
+  function startGame() {
+    gameState.gameStarted = true;
+    document.getElementById('missionScreen').style.display = 'none';
+    document.getElementById('gameScreen').style.display = 'block';
+    renderTechnologies();
+    updateUI();
+    addMessage('SDI Program activated per Presidential directive', 'success');
+    addMessage('Initial appropriation: $3.8 billion (FY1985)', '');
+
+    // Start game loops
+    setInterval(gameLoop, 1000);
+    setInterval(yearlyUpdate, 12000); // Every 12 seconds = 1 year
+  }
+
+  // ======= Render Technology Cards (reads from window.technologies so FRUS swaps appear) =======
+  function renderTechnologies() {
+    const grid = document.getElementById('techGrid');
+    grid.innerHTML = '';
+
+    (window.technologies || []).forEach(tech => {
+      const isResearched = gameState.technologies.includes(tech.id);
+      const canAfford = gameState.budget >= tech.cost && gameState.research >= tech.researchCost;
+
+      const card = document.createElement('div');
+      card.className = `tech-card ${isResearched ? 'researched' : ''} ${!canAfford && !isResearched ? 'locked' : ''}`;
+      card.innerHTML = `
+        <div class="tech-name">${tech.name}</div>
+        <div class="tech-description">${tech.description}</div>
+        <div class="tech-cost">
+          ${isResearched ? 'STATUS: OPERATIONAL' : `Requirements: $${tech.cost}B | ${tech.researchCost} RP`}
+        </div>
+      `;
+
+      if (!isResearched && canAfford) {
+        card.onclick = () => researchTechnology(tech);
+      }
+
+      grid.appendChild(card);
+    });
+  }
+
+  // ======= Research Technology (double-click guard + interceptor increment) =======
+  function researchTechnology(tech) {
+    // Guard: already researched?
+    if (gameState.technologies.includes(tech.id)) return;
+
+    if (gameState.budget >= tech.cost && gameState.research >= tech.researchCost) {
+      gameState.budget -= tech.cost;
+      gameState.research -= tech.researchCost;
+      gameState.technologies.push(tech.id);
+      gameState.defense = clamp(gameState.defense + (tech.defenseBonus || 0), 0, 100);
+      gameState.political = clamp(gameState.political + 5, 0, 100);
+      gameState.testsRun++;
+      gameState.testsSuccessful++;
+
+      if (tech.type === 'midcourse' || tech.type === 'terminal') {
+        gameState.interceptors += Math.floor((tech.defenseBonus || 0) / 2);
+      }
+
+      addMessage(`${tech.name} deployment authorized and operational`, 'success');
+      renderTechnologies();
+      updateUI();
+    }
+  }
+
+  // ======= Decisions =======
+  function triggerDecision(decision) {
+    if (gameState.currentDecision) return;
+
+    gameState.currentDecision = decision;
+    const panel = document.getElementById('decisionPanel');
+    panel.className = 'decision-panel active';
+
+    document.getElementById('decisionTitle').textContent = decision.title;
+    document.getElementById('decisionText').textContent = decision.text;
+
+    const optionsDiv = document.getElementById('decisionOptions');
+    optionsDiv.innerHTML = '';
+
+    decision.options.forEach((option, index) => {
+      const button = document.createElement('button');
+      button.className = 'decision-button';
+      button.textContent = option.text;
+      button.onclick = () => makeDecision(index);
+      optionsDiv.appendChild(button);
+    });
+
+    addMessage(`PRIORITY: ${decision.title}`, 'critical');
+  }
+
+  function makeDecision(optionIndex) {
+    const decision = gameState.currentDecision;
+    if (!decision) return;
+    const option = decision.options[optionIndex];
+
+    Object.keys(option.effects).forEach(key => {
+      if (key === 'budget') {
+        gameState[key] = clamp(gameState[key] + option.effects[key], 0, gameState.maxBudget);
+      } else if (key === 'research') {
+        gameState[key] = clamp(gameState[key] + option.effects[key], 0, gameState.maxResearch);
+      } else {
+        gameState[key] = clamp(gameState[key] + option.effects[key], 0, 100);
+      }
+    });
+
+    addMessage(`Decision recorded: ${decision.title}`, 'warning');
+    document.getElementById('decisionPanel').className = 'decision-panel';
+    gameState.currentDecision = null;
+    updateUI();
+  }
+
+  // ======= Missile Defense Simulation =======
+  function simulateMissileAttack(missileCount) {
+    addMessage(`FLASH PRIORITY: ${missileCount} Soviet ICBMs detected by NORAD`, 'critical');
+    document.getElementById('threatIndicator').className = 'threat-indicator active';
+    document.getElementById('missileCount').textContent = missileCount;
+
+    const defenseScreen = document.getElementById('defenseScreen');
+    defenseScreen.className = 'defense-screen active';
+    document.getElementById('gameScreen').style.display = 'none';
+
+    gameState.testsRun++;
+    let missilesDestroyed = 0;
+    const interceptionRate = Math.min(0.9, gameState.defense / 100);
+
+    for (let i = 0; i < missileCount; i++) {
+      if (Math.random() < interceptionRate) missilesDestroyed++;
+    }
+    if (missilesDestroyed > 0) gameState.testsSuccessful++;
+
+    setTimeout(() => {
+      const survived = missileCount - missilesDestroyed;
+      if (survived === 0) {
+        addMessage(`DEFENSE SUCCESS: All ${missileCount} targets neutralized`, 'success');
+        gameState.political = clamp(gameState.political + 20, 0, 100);
+      } else if (survived < missileCount / 2) {
+        addMessage(`PARTIAL SUCCESS: ${missilesDestroyed}/${missileCount} intercepted, ${survived} leaked through`, 'warning');
+        gameState.political = clamp(gameState.political + 5, 0, 100);
+      } else {
+        addMessage(`DEFENSE FAILURE: Only ${missilesDestroyed}/${missileCount} intercepted`, 'critical');
+        gameState.political = clamp(gameState.political - 20, 0, 100);
+      }
+
+      document.getElementById('threatIndicator').className = 'threat-indicator';
+      defenseScreen.className = 'defense-screen';
+      document.getElementById('gameScreen').style.display = 'block';
+      updateUI();
+    }, 5000);
+  }
+
+  // ======= Game Loop =======
+  function gameLoop() {
+    if (!gameState.gameStarted) return;
+
+    // Generate research points
+    gameState.research = clamp(
+      gameState.research + (Array.isArray(window.technologies) ? window.technologies.length * 2 : 0),
+      0,
+      gameState.maxResearch
+    );
+
+    // Random threat events
+    if (Math.random() < 0.001) {
+      const missileCount = Math.floor(Math.random() * 10) + 1;
+      simulateMissileAttack(missileCount);
+    }
+
+    updateUI();
+  }
+
+  // ======= Yearly Update (still used; your FRUS monthly system will override cadence) =======
+  function yearlyUpdate() {
+    if (!gameState.gameStarted) return;
+
+    gameState.year++;
+    gameState.budget = clamp(gameState.budget + 2, 0, gameState.maxBudget);
+
+    addMessage(`FY${gameState.year} Congressional appropriation received`, '');
+
+    // Check for historical decisions
+    const yearDecision = decisions.find(d => d.year === gameState.year);
+    if (yearDecision) triggerDecision(yearDecision);
+
+    // Random Congressional actions
+    if (Math.random() < 0.3 && !gameState.currentDecision) {
+      const budgetChange = (Math.random() - 0.5) * 1.5;
+      gameState.budget = clamp(gameState.budget + budgetChange, 0.5, gameState.maxBudget);
+      if (budgetChange > 0) {
+        addMessage(`Congress approves $${Math.abs(budgetChange).toFixed(1)}B supplemental`, 'success');
+      } else {
+        addMessage(`Budget reduction: $${Math.abs(budgetChange).toFixed(1)}B`, 'warning');
+      }
+    }
+
+    // Check victory/defeat conditions
+    if (gameState.year >= 1993) {
+      if (gameState.defense >= 50) {
+        alert('MISSION ACCOMPLISHED\n\nYou successfully developed and deployed the Strategic Defense Initiative.\n\nFinal Defense Capability: ' + gameState.defense + '%\nTechnologies Deployed: ' + gameState.technologies.length);
+      } else {
+        alert('PROGRAM TERMINATED\n\nSDI failed to achieve minimum viable defense capability.\n\nFinal Defense Capability: ' + gameState.defense + '%');
+      }
+      location.reload();
+    }
+
+    updateUI();
+  }
+
+  // ======= UI Update (with clamped progress bars) =======
+  function updateUI() {
+    document.getElementById('budget').textContent = `$${gameState.budget.toFixed(1)}B`;
+    document.getElementById('budgetBar').style.width = pct((gameState.budget / gameState.maxBudget) * 100) + '%';
+
+    document.getElementById('research').textContent = gameState.research;
+    document.getElementById('researchBar').style.width = pct((gameState.research / gameState.maxResearch) * 100) + '%';
+
+    document.getElementById('political').textContent = `${gameState.political}%`;
+    document.getElementById('politicalBar').style.width = pct(gameState.political) + '%';
+
+    document.getElementById('defense').textContent = `${gameState.defense}%`;
+    document.getElementById('defenseBar').style.width = pct(gameState.defense) + '%';
+
+    document.getElementById('currentYear').textContent = gameState.year;
+    document.getElementById('techCount').textContent = gameState.technologies.length;
+    document.getElementById('interceptorCount').textContent = gameState.interceptors;
+
+    const successRate = gameState.testsRun > 0
+      ? Math.round((gameState.testsSuccessful / gameState.testsRun) * 100) + '%'
+      : 'N/A';
+    document.getElementById('successRate').textContent = successRate;
+  }
+
+  // ======= Message System (unchanged) =======
+  function addMessage(text, type = '') {
+    const log = document.getElementById('messageLog');
+    const message = document.createElement('div');
+    message.className = `message ${type}`;
+    const date = new Date();
+    const timestamp = `${date.getMonth() + 1}/${date.getDate()}/${gameState.year}`;
+    message.textContent = `[${timestamp}] ${text}`;
+    log.insertBefore(message, log.firstChild);
+
+    while (log.children.length > 8) {
+      log.removeChild(log.lastChild);
+    }
+  }
+</script>
+
     <script>
 /* ========= FRUS TEI → MONTHLY SDI DECISIONS (1985–1988) =========
    - Reads frus1981-88v44p1.xml in the same directory
@@ -1501,6 +1420,7 @@
 
 </body>
 </html>
+
 
 
 
