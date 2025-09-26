@@ -1097,61 +1097,45 @@
   let _decisionsByMonth = new Map();
   let _techFromXML = null;
 
-  // ---- Fetch the local FRUS TEI XML (more robust, clearer errors) ----
+  // ---- Fetch the local FRUS TEI XML (GitHub Pages-aware) ----
 (async function loadFRUS(){
+  // Compute the base path for a Project Page like /SDI_Commander/...
+  const origin = location.origin;
+  // e.g., /SDI_Commander/some/sub/page.html -> /SDI_Commander/
+  const basePath = location.pathname.replace(/[^/]+$/, '');
   const candidates = [
-    'frus1981-88v44p1.xml',
-    './frus1981-88v44p1.xml',
-    new URL('frus1981-88v44p1.xml', location.href).href
+    // likely next to your HTML
+    basePath + 'frus1981-88v44p1.xml',
+    // common subfolders people use
+    basePath + 'data/frus1981-88v44p1.xml',
+    basePath + 'volumes/frus1981-88v44p1.xml',
+    // fully-qualified as a last resort
+    origin + '/SDI_Commander/frus1981-88v44p1.xml',
+    origin + '/SDI_Commander/data/frus1981-88v44p1.xml',
+    origin + '/SDI_Commander/volumes/frus1981-88v44p1.xml'
   ];
-  let lastStatus = null, lastErr = null, lastURL = null;
 
+  let lastURL = null, lastStatus = null;
   for (const url of candidates) {
     try {
       lastURL = url;
       const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) {
-        lastStatus = `${res.status} ${res.statusText}`;
-        console.warn(`[FRUS] HTTP error at ${url}: ${lastStatus}`);
-        continue;
-      }
+      if (!res.ok) { lastStatus = `${res.status} ${res.statusText}`; continue; }
       const txt = await res.text();
-
-      if (txt.includes('<html') && !/<TEI[\s>]/i.test(txt)) {
-        addMessage(`FRUS load error: got HTML instead of TEI at ${url}. Make sure you downloaded the RAW XML.`, 'critical');
-        console.error('[FRUS] Received HTML page, not TEI XML.', { url, sample: txt.slice(0, 300) });
-        // keep trying other candidates in case one resolves correctly
-        continue;
-      }
-
-      // Parse TEI
+      if (txt.includes('<html') && !/<TEI[\s>]/i.test(txt)) { continue; } // wrong file
       _tei = new DOMParser().parseFromString(txt, 'text/xml');
-      const teiRoot = _tei.querySelector('TEI, tei\\:TEI');
-      if (!teiRoot) {
-        addMessage(`FRUS load error: parsed XML at ${url} but no <TEI> root found.`, 'critical');
-        console.error('[FRUS] No <TEI> root found at', url);
-        continue;
-      }
-
-      console.info('[FRUS] Loaded TEI from', url);
+      if (!_tei.querySelector('TEI, tei\\:TEI')) { continue; }
       indexFRUS();
       wireMonthlyTimer();
       addMessage('FRUS XML loaded. Monthly SDI decisions enabled.', 'success');
-      return; // success
-    } catch (e) {
-      lastErr = e;
-      console.error('[FRUS] Network error at', url, e);
-      continue;
-    }
+      return;
+    } catch (e) { /* try next */ }
   }
 
-  // If we got here, all candidates failed:
   wireMonthlyTimer(/*fallback*/true);
-  const hint = location.protocol === 'file:' 
-    ? ' (Hint: you opened this via file:// — run a local server, e.g. python3 -m http.server 8000)'
-    : '';
-  addMessage(`FRUS XML not found — running base gameplay only. Last tried: ${lastURL}${lastStatus ? ' ['+lastStatus+']' : ''}${hint}`, 'warning');
+  addMessage(`FRUS XML not found — running base gameplay only. Last tried: ${lastURL}${lastStatus?' ['+lastStatus+']':''}`, 'warning');
 })();
+
 
 
   // ---- TEI parsing & indexing (ABM/SDI/Congress/military focus) ----
@@ -1515,6 +1499,7 @@
 
 </body>
 </html>
+
 
 
 
