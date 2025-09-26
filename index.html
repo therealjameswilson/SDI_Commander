@@ -1015,47 +1015,80 @@
   let _tei = null;
   let _decisionsByMonth = new Map();
   let _techFromXML = null;
+</script>
 
-  // ---- Fetch the local FRUS TEI XML (GitHub Pages-aware) ----
+   <script>
+/* ---- Fetch the FRUS TEI XML (robust, CORS-friendly, cache-busting) ---- */
 (async function loadFRUS(){
-  const origin = location.origin;
-  const basePath = location.pathname.replace(/[^/]+$/, '');
-  const candidates = [
-    // 1) Always try the raw.githubusercontent URL first (works even if Pages path is wrong)
-    'https://raw.githubusercontent.com/therealjameswilson/SDI_Commander/main/frus1981-88v44p1.xml',
+  // IMPORTANT: raw.githubusercontent.com has permissive CORS and is the most reliable
+  const RAW = 'https://raw.githubusercontent.com/therealjameswilson/SDI_Commander/main/frus1981-88v44p1.xml';
 
-    // 2) Local/project-relative fallbacks
+  // For GitHub Pages project sites like https://therealjameswilson.github.io/SDI_Commander/...
+  const origin   = location.origin;                          // e.g., https://therealjameswilson.github.io
+  const basePath = location.pathname.replace(/[^/]+$/, '');  // e.g., /SDI_Commander/
+
+  // Candidate URLs (RAW first)
+  const candidates = [
+    RAW,
     basePath + 'frus1981-88v44p1.xml',
     basePath + 'data/frus1981-88v44p1.xml',
     basePath + 'volumes/frus1981-88v44p1.xml',
-
-    // 3) Fully qualified GitHub Pages URLs as last resort
     origin + '/SDI_Commander/frus1981-88v44p1.xml',
     origin + '/SDI_Commander/data/frus1981-88v44p1.xml',
     origin + '/SDI_Commander/volumes/frus1981-88v44p1.xml'
   ];
 
-  let lastURL = null, lastStatus = null;
+  // Helper: append a cache-busting query
+  const withBust = (u) => u + (u.includes('?') ? '&' : '?') + 'cb=' + Date.now();
+
+  // Try each candidate, log exactly what happened
+  const attempts = [];
+  let _tei = null;
+
   for (const url of candidates) {
+    const tryURL = withBust(url);
     try {
-      lastURL = url;
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) { lastStatus = `${res.status} ${res.statusText}`; continue; }
+      const res = await fetch(tryURL, { cache: 'no-store' });
+      attempts.push({ url, ok: res.ok, status: res.status + ' ' + res.statusText });
+      if (!res.ok) continue;
+
       const txt = await res.text();
-      if (txt.includes('<html') && !/<TEI[\s>]/i.test(txt)) continue;
-      _tei = new DOMParser().parseFromString(txt, 'text/xml');
-      if (!_tei.querySelector('TEI, tei\\:TEI')) continue;
-      indexFRUS();
-      wireMonthlyTimer();
-      addMessage('FRUS XML loaded. Monthly SDI decisions enabled.', 'success');
+
+      // If GitHub returns an HTML "not found" page, skip
+      if (txt.toLowerCase().includes('<html') && !/<TEI[\s>]/i.test(txt)) {
+        attempts.push({ url, ok:false, status:'HTML page (not TEI XML)' });
+        continue;
+      }
+
+      const doc = new DOMParser().parseFromString(txt, 'text/xml');
+      if (!doc.querySelector('TEI, tei\\:TEI')) {
+        attempts.push({ url, ok:false, status:'Parsed but no <TEI> root' });
+        continue;
+      }
+
+      _tei = doc;
+      // Hand off to your existing indexer & timer (these are defined in your other script)
+      if (typeof indexFRUS === 'function') indexFRUS.call(window, _tei);
+      if (typeof wireMonthlyTimer === 'function') wireMonthlyTimer();
+      if (typeof addMessage === 'function') addMessage('FRUS XML loaded. Monthly SDI decisions enabled.', 'success');
       return;
-    } catch (e) { /* try next */ }
+    } catch (e) {
+      attempts.push({ url, ok:false, status:'JS exception: ' + (e && e.message ? e.message : e) });
+      continue;
+    }
   }
 
-  wireMonthlyTimer(/*fallback*/true);
-  addMessage(`FRUS XML not found — running base gameplay only. Last tried: ${lastURL}${lastStatus?' ['+lastStatus+']':''}`, 'warning');
+  // If we got here, everything failed—report the full attempt log
+  if (typeof addMessage === 'function') {
+    const last = attempts[attempts.length - 1] || {};
+    addMessage('FRUS XML not found — running base gameplay only.', 'warning');
+    attempts.forEach(a => addMessage(`Tried: ${a.url} [${a.status}]`, 'warning'));
+  }
 })();
+</script>
 
+
+</script>
 
 
 
@@ -1420,6 +1453,7 @@
 
 </body>
 </html>
+
 
 
 
