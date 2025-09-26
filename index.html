@@ -1099,18 +1099,18 @@
 
   // ---- Fetch the local FRUS TEI XML (GitHub Pages-aware) ----
 (async function loadFRUS(){
-  // Compute the base path for a Project Page like /SDI_Commander/...
   const origin = location.origin;
-  // e.g., /SDI_Commander/some/sub/page.html -> /SDI_Commander/
   const basePath = location.pathname.replace(/[^/]+$/, '');
   const candidates = [
-    // likely next to your HTML
-      https://raw.githubusercontent.com/therealjameswilson/SDI_Commander/main/frus1981-88v44p1.xml
+    // 1) Always try the raw.githubusercontent URL first (works even if Pages path is wrong)
+    'https://raw.githubusercontent.com/therealjameswilson/SDI_Commander/main/frus1981-88v44p1.xml',
+
+    // 2) Local/project-relative fallbacks
     basePath + 'frus1981-88v44p1.xml',
-    // common subfolders people use
     basePath + 'data/frus1981-88v44p1.xml',
     basePath + 'volumes/frus1981-88v44p1.xml',
-    // fully-qualified as a last resort
+
+    // 3) Fully qualified GitHub Pages URLs as last resort
     origin + '/SDI_Commander/frus1981-88v44p1.xml',
     origin + '/SDI_Commander/data/frus1981-88v44p1.xml',
     origin + '/SDI_Commander/volumes/frus1981-88v44p1.xml'
@@ -1123,9 +1123,9 @@
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) { lastStatus = `${res.status} ${res.statusText}`; continue; }
       const txt = await res.text();
-      if (txt.includes('<html') && !/<TEI[\s>]/i.test(txt)) { continue; } // wrong file
+      if (txt.includes('<html') && !/<TEI[\s>]/i.test(txt)) continue;
       _tei = new DOMParser().parseFromString(txt, 'text/xml');
-      if (!_tei.querySelector('TEI, tei\\:TEI')) { continue; }
+      if (!_tei.querySelector('TEI, tei\\:TEI')) continue;
       indexFRUS();
       wireMonthlyTimer();
       addMessage('FRUS XML loaded. Monthly SDI decisions enabled.', 'success');
@@ -1136,6 +1136,7 @@
   wireMonthlyTimer(/*fallback*/true);
   addMessage(`FRUS XML not found — running base gameplay only. Last tried: ${lastURL}${lastStatus?' ['+lastStatus+']':''}`, 'warning');
 })();
+
 
 
 
@@ -1500,6 +1501,7 @@
 
 </body>
 </html>
+
 
 
 
