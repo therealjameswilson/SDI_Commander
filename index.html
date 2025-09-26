@@ -462,6 +462,23 @@
                 grid-template-columns: 1fr;
             }
         }
+        .badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  font-size: 0.75em;
+  font-weight: 700;
+  border-radius: 12px;
+  border: 1px solid #4a7c59;
+  background: #4a7c59;
+  color: #fff;
+  vertical-align: middle;
+  letter-spacing: 0.5px;
+}
+.badge.off {
+  border-color: #8a8a8a;
+  background: #8a8a8a;
+}
     </style>
 </head>
 <body>
@@ -525,7 +542,11 @@
             </div>
             
             <div class="sidebar">
-                <h3>PROGRAM STATUS</h3>
+                <h3>
+PROGRAM STATUS
+  <span id="frusBadge" class="badge off" title="FRUS XML not loaded">FRUS FALLBACK</span>
+</h3>
+
                 
                 <div class="resource">
                     <div class="resource-label">Budget Authorization</div>
@@ -1448,6 +1469,7 @@
 
 </body>
 </html>
+
 
 
 
