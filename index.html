@@ -520,6 +520,33 @@
                 
                 <div id="gameScreen" style="display: none;">
                     <h2>Strategic Defense Initiative - Technology Development</h2>
+<!-- ===== SDI PLANNER (pick up to 3) ===== -->
+<div id="sdiPlanner" style="display:none; margin-top:16px;">
+  <h2>NSC SDI Guidance — Select up to 3 Focus Areas</h2>
+  <p style="margin-bottom:10px;">Choose at most three SDI thrusts and allocate this month’s R&amp;D effort. These are derived from FRUS references (fallback to defaults if FRUS not loaded).</p>
+  <div id="sdiTrackList" class="tech-grid"></div>
+  <div id="sdiAllocPanel" style="display:none; margin-top:12px; background:#faf8f3; border:1px solid #a04632; padding:12px;">
+    <div style="font-weight:600; color:#8b3a21; margin-bottom:8px;">Monthly R&amp;D Allocation (must equal 100%)</div>
+    <div id="sdiAllocRows"></div>
+    <div style="margin-top:8px; font-size:0.9em;">Total: <span id="sdiAllocTotal">0</span>%</div>
+    <button class="decision-button" id="saveSdiPlanBtn">Save SDI Plan</button>
+  </div>
+</div>
+
+<!-- ===== MX / PEACEKEEPER BASING PANE ===== -->
+<div id="mxPane" style="display:none; margin-top:16px;">
+  <h2>MX / Peacekeeper Basing Options</h2>
+  <div id="mxDocsNote" class="document-text" style="margin-top:0;">
+    Relevant options will appear in months where the FRUS volume discusses MX/Peacekeeper/basing. Otherwise this section stays quiet.
+  </div>
+  <div id="mxOptions" class="decision-options"></div>
+</div>
+
+<!-- Quick access buttons -->
+<div style="display:flex; gap:8px; margin-top:8px;">
+  <button class="decision-button" id="openPlannerBtn">Open SDI Planner</button>
+  <button class="decision-button" id="openMXBtn">Open MX Basing</button>
+</div>
 
 
                     <!-- R&D Allocation Panel -->
@@ -1794,6 +1821,7 @@ const END_FRAME = { y: 1988, m: 12 }; // end of scenario
 
 </body>
 </html>
+
 
 
 
