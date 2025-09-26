@@ -1327,6 +1327,56 @@ PROGRAM STATUS
   function monthlyTick(fallback){
     if (!gameState.gameStarted) return;
 
+// ===== FRUS badge wiring =====
+(function(){
+  function setFrusBadge(active, info){
+    const el = document.getElementById('frusBadge');
+    if (!el) return;
+    if (active) {
+      el.classList.remove('off');
+      el.textContent = 'FRUS-DRIVEN SCENARIO';
+      el.title = info || 'Decisions sourced from FRUS TEI XML';
+    } else {
+      el.classList.add('off');
+      el.textContent = 'FRUS FALLBACK';
+      el.title = 'Running without FRUS XML; using base gameplay events';
+    }
+  }
+  // Expose globally so the loader can flip it
+  window.setFrusBadge = setFrusBadge;
+
+  // Auto-detect after indexFRUS() populates decisions
+  function tryUpdate() {
+    const map = window._decisionsByMonth;
+    if (map instanceof Map && map.size) {
+      let docs = 0;
+      for (const arr of map.values()) docs += (arr?.length||0);
+      setFrusBadge(true, `${docs} FRUS docs across ${map.size} months`);
+      return true;
+    }
+    return false;
+  }
+
+  if (!tryUpdate()) {
+    if (typeof window.indexFRUS === 'function') {
+      const _orig = window.indexFRUS;
+      window.indexFRUS = function(){
+        _orig.apply(this, arguments);
+        if (!tryUpdate()) setFrusBadge(false);
+      };
+    }
+    // Safety net: poll briefly until XML loads
+    let polls = 0;
+    const t = setInterval(() => {
+      if (tryUpdate()) { clearInterval(t); return; }
+      if (++polls > 100) { // stop after ~10s
+        setFrusBadge(false);
+        clearInterval(t);
+      }
+    }, 100);
+  }
+})();
+      
     // Advance one month
     const nm = nextMonth(gameState.year, gameState.month);
     gameState.year = nm.y;
@@ -1469,6 +1519,7 @@ PROGRAM STATUS
 
 </body>
 </html>
+
 
 
 
