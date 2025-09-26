@@ -707,7 +707,18 @@ const gameState = {
     pools: { boost:0, midcourse:0, terminal:0, sensor:0 }      // typed RP pools
   }
 };
+// --- SDI planning state ---
+gameState.sdiPlan = {
+  selected: [],          // array of track ids (max 3)
+  allocations: {},       // id -> percent
+  lastAppliedY: 0,
+  lastAppliedM: 0
+};
 
+// Helper: in-place clamp
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+    
 // Technology Database (from FRUS documents)
 let technologies = [
   { id:'hoe',      name:'Homing Overlay Experiment (HOE)', description:'Kinetic energy interceptor system', cost:0.5, researchCost:100, defenseBonus:10, type:'midcourse' },
@@ -751,6 +762,7 @@ const decisions = [
     options:[
       { text:'Accept laboratory limitations - Historic arms reduction', effects:{ political:25, defense:-20, research:-300 } },
       { text:'Reject Soviet proposal - Preserve SDI development', effects:{ political:-10, defense:15, research:100 } }
+        { text: 'Advise President to postpone Reykjavik pending ABM clarification', effects: { political: -5, research: +40, defense: +4 } }
     ]
   },
   {
@@ -976,6 +988,42 @@ function makeDecision(optionIndex) {
   updateUI();
 }
 
+// MX pane: if any doc this month is MX-related, populate options in the side pane,
+// otherwise collapse it.
+const mxBox = document.getElementById('mxPane');
+const mxOpts = document.getElementById('mxOptions');
+const mxNote = document.getElementById('mxDocsNote');
+if (window._decisionsByMonth instanceof Map) {
+  const key = `${gameState.year}-${String(gameState.month).padStart(2,'0')}`;
+  const docs = _decisionsByMonth.get(key) || [];
+  const mxDocs = docs.filter(d => d.isMX);
+  if (mxDocs.length && mxBox && mxOpts) {
+    mxBox.style.display = 'block';
+    mxOpts.innerHTML = '';
+    const mxDec = buildMXDecision(mxDocs[0]);
+    mxNote.textContent = 'Options derived from FRUS: see link in the monthly decision card.';
+    mxDec.options.forEach((o, i) => {
+      const b = document.createElement('button');
+      b.className = 'decision-button';
+      b.textContent = o.text;
+      b.onclick = () => {
+        Object.entries(o.effects).forEach(([k,v])=>{
+          if (k==='budget') gameState[k] = clamp(gameState[k] + v, 0, gameState.maxBudget);
+          else if (k==='research') gameState[k] = clamp(gameState[k] + v, 0, gameState.maxResearch);
+          else gameState[k] = clamp(gameState[k] + v, 0, 100);
+        });
+        addMessage(`MX basing choice adopted: ${o.text}`, 'warning');
+        updateUI();
+      };
+      mxOpts.appendChild(b);
+    });
+  } else if (mxBox) {
+    mxBox.style.display = 'none';
+    mxOpts.innerHTML = '';
+  }
+}
+
+    
 // Missile Defense Simulation (unchanged)
 function simulateMissileAttack(missileCount) {
   addMessage(`FLASH PRIORITY: ${missileCount} Soviet ICBMs detected by NORAD`, 'critical');
@@ -1149,6 +1197,130 @@ function addMessage(text, type = '') {
 
 // Utility
 function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+// ===== Build the SDI catalog from FRUS-derived tech if available, else fallback =====
+function getSdiCatalog(){
+  // If your FRUS monthly script derived _techFromXML, prefer that
+  if (window._tei && Array.isArray(window._techFromXML) && window._techFromXML.length) {
+    return window._techFromXML.map(t => ({
+      id: t.id, name: t.name, description: t.description,
+      researchCost: t.researchCost, cost: t.cost, defenseBonus: t.defenseBonus, type: t.type
+    }));
+  }
+  // fallback to your existing "technologies"
+  return (Array.isArray(window.technologies) ? window.technologies : []).slice();
+}
+
+// ===== Open SDI Planner UI =====
+function openSdiPlanner(){
+  const el = document.getElementById('sdiPlanner');
+  const list = document.getElementById('sdiTrackList');
+  const alloc = document.getElementById('sdiAllocPanel');
+  const rows = document.getElementById('sdiAllocRows');
+  const total = document.getElementById('sdiAllocTotal');
+  const saveBtn = document.getElementById('saveSdiPlanBtn');
+  if (!el || !list) return;
+
+  const catalog = getSdiCatalog();
+  el.style.display = 'block';
+  list.innerHTML = '';
+
+  // Render selectable cards (checkbox + short info)
+  catalog.forEach(tech => {
+    const card = document.createElement('div');
+    card.className = 'tech-card';
+    card.innerHTML = `
+      <div class="tech-name" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" class="sdiPick" data-id="${tech.id}">
+        <span>${tech.name}</span>
+      </div>
+      <div class="tech-description">${tech.description || ''}</div>
+      <div class="tech-cost">Ref. Cost: $${(tech.cost||0).toFixed(1)}B | RP ${tech.researchCost||0}</div>
+    `;
+    list.appendChild(card);
+  });
+
+  // Restore previous picks
+  for (const cb of list.querySelectorAll('.sdiPick')) {
+    cb.checked = gameState.sdiPlan.selected.includes(cb.dataset.id);
+    cb.addEventListener('change', () => {
+      const picked = Array.from(list.querySelectorAll('.sdiPick')).filter(x=>x.checked).map(x=>x.dataset.id);
+      if (picked.length > 3) {
+        cb.checked = false; // enforce max 3
+        addMessage('You can select at most three SDI focus areas.', 'warning');
+        return;
+      }
+      gameState.sdiPlan.selected = picked;
+      renderAllocUI();
+    });
+  }
+
+  // Build allocation sliders for selected
+  function renderAllocUI(){
+    const picked = gameState.sdiPlan.selected;
+    if (!picked.length) { alloc.style.display='none'; return; }
+    alloc.style.display='block';
+    rows.innerHTML = '';
+    let sum = 0;
+    picked.forEach(id => {
+      const tech = catalog.find(t=>t.id===id);
+      const pct = gameState.sdiPlan.allocations[id] ?? Math.round(100/picked.length);
+      sum += pct;
+      const row = document.createElement('div');
+      row.style.display='grid';
+      row.style.gridTemplateColumns='1fr 70px 1fr';
+      row.style.alignItems='center';
+      row.style.gap='8px';
+      row.style.margin='6px 0';
+      row.innerHTML = `
+        <div style="font-weight:600; color:#8b3a21;">${tech ? tech.name : id}</div>
+        <input type="number" min="0" max="100" step="1" value="${pct}" class="sdiAllocNum" data-id="${id}" style="width:70px; padding:4px;">
+        <input type="range" min="0" max="100" step="1" value="${pct}" class="sdiAllocRange" data-id="${id}">
+      `;
+      rows.appendChild(row);
+    });
+    total.textContent = sum;
+
+    const sync = (id, value) => {
+      value = clamp(parseInt(value||0,10)||0, 0, 100);
+      gameState.sdiPlan.allocations[id] = value;
+      // sync paired controls
+      const n = rows.querySelector(`.sdiAllocNum[data-id="${id}"]`);
+      const r = rows.querySelector(`.sdiAllocRange[data-id="${id}"]`);
+      if (n && parseInt(n.value,10)!==value) n.value = value;
+      if (r && parseInt(r.value,10)!==value) r.value = value;
+      // recompute sum
+      let s = 0;
+      for (const pid of gameState.sdiPlan.selected) s += (gameState.sdiPlan.allocations[pid]||0);
+      total.textContent = s;
+    };
+
+    rows.querySelectorAll('.sdiAllocNum,.sdiAllocRange').forEach(inp=>{
+      inp.addEventListener('input', e => sync(inp.dataset.id, inp.value));
+    });
+  }
+
+  renderAllocUI();
+
+  saveBtn.onclick = () => {
+    const picked = gameState.sdiPlan.selected;
+    if (!picked.length) { addMessage('Pick at least one SDI focus area.', 'warning'); return; }
+    let s = 0;
+    picked.forEach(id => s += (gameState.sdiPlan.allocations[id]||0));
+    if (s !== 100) { addMessage('Allocations must total 100%.', 'warning'); return; }
+    gameState.sdiPlan.lastAppliedY = gameState.year;
+    gameState.sdiPlan.lastAppliedM = gameState.month;
+    addMessage('SDI plan saved and will drive monthly R&D.', 'success');
+  };
+}
+
+// Wire open buttons
+document.getElementById('openPlannerBtn')?.addEventListener('click', openSdiPlanner);
+document.getElementById('openMXBtn')?.addEventListener('click', ()=>{
+  const pane = document.getElementById('mxPane');
+  if (pane) pane.style.display = (pane.style.display==='none' ? 'block' : 'none');
+});
+
+    
 </script>
 
 
@@ -1410,7 +1582,9 @@ function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
         const isBudget=/appropriation|authorization|budget|committee|markup|supplemental|reduce|cut|increase/i.test(full);
         const isService=/\bJCS\b|Joint Chiefs|Air Force|Army|Navy|OSD|DOD|service chief|Chairman\b/i.test(full);
         const isTech=/HOE\b|MIRACL|ERIS\b|Brilliant Pebbles|Neutral Particle Beam|Excalibur|X-?Ray|boost|midcourse|terminal|discrimination|sensor/i.test(full);
-        const isMX=/\bMX\b|Peacekeeper|dense pack|rail garrison|basing/i.test(full);
+        const isMX = /\bMX\b|\bPeacekeeper\b|\bMidgetman\b|basing|rail garrison|dense pack|multiple protective shelters|\bMPS\b|silo\b|road-?mobile/i.test(full);
+
+return { id, title, year, month, full, money, isABM, isReyk, isBudget, isService, isTech, isMX, quote, node: d };
 
         // choose an excerpt paragraph
         let quote = '';
@@ -1461,6 +1635,53 @@ function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
 
     const srcHash = it.id ? `#${it.id}` : '';
     const when = `${monthNames[it.month-1]} ${it.year}`;
+
+      function buildMXDecision(it){
+  // Mine option labels mentioned in the doc
+  const txt = it.full;
+  const opts = [];
+  function has(re){ return re.test(txt); }
+
+  if (has(/rail garrison/i))   opts.push({ key:'rail',  label:'Adopt Rail Garrison basing' });
+  if (has(/dense pack|mps|multiple protective shelters/i))
+                               opts.push({ key:'mps',   label:'Adopt Dense Pack / MPS basing' });
+  if (has(/\bsilo\b|\bhardening\b/i))
+                               opts.push({ key:'silo',  label:'Upgrade/reharden fixed silos' });
+  if (has(/road-?mobile|midgetman/i))
+                               opts.push({ key:'mobile',label:'Pursue road-mobile (Midgetman) path' });
+
+  // If nothing matched, present a generic “defer” vs “advance” choice
+  if (!opts.length) {
+    opts.push({ key:'study', label:'Defer basing decision; order new basing study' });
+    opts.push({ key:'accelerate', label:'Accelerate basing and procurement now' });
+  }
+
+  // Effects heuristics: political & budget pull from Congressional language; deterrence affects "defense"
+  let pol = 0, def = 0, bud = 0;
+  if (/\b(cut|reduce|freeze)\b/i.test(txt)) pol -= 8;
+  if (/\b(approve|authorize|support|pass)\b/i.test(txt)) pol += 6;
+  if (/\b(cost|overrun|expensive|billions)\b/i.test(txt)) bud -= 0.8;
+
+  const options = opts.map(o => {
+    switch (o.key) {
+      case 'rail':    return { text: o.label, effects: { political: pol+2, defense: def+6, budget: bud-1.4, research: +30 } };
+      case 'mps':     return { text: o.label, effects: { political: pol-4, defense: def+8, budget: bud-1.8, research: +20 } };
+      case 'silo':    return { text: o.label, effects: { political: pol+4, defense: def+4, budget: bud-0.9, research: +10 } };
+      case 'mobile':  return { text: o.label, effects: { political: pol-2, defense: def+7, budget: bud-1.6, research: +25 } };
+      case 'study':   return { text: o.label, effects: { political: pol+3, defense: def+1, research: +15 } };
+      case 'accelerate': return { text: o.label, effects: { political: pol-5, defense: def+5, budget: bud-1.2, research: +10 } };
+    }
+  });
+
+  const src = it.id ? `#${it.id}` : '';
+  return {
+    id: (it.id || ('mx_'+it.year)).toLowerCase(),
+    year: it.year, month: it.month || 1,
+    title: 'MX / Peacekeeper Basing Decision',
+    text: `${it.quote}\n\nSource: ${src || '(local TEI document)'}`,
+    options
+  };
+}
 
     // Core options (NSA framing)
     const options = [];
@@ -1581,6 +1802,29 @@ function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
     gameState.budget = clamp(gameState.budget + 0.18, 0, gameState.maxBudget);
     addMessage(`Monthly update: ${monthNames[gameState.month-1]} ${gameState.year}.`, '');
 
+// === Apply SDI plan to generate monthly RP & small defense drift ===
+// Simple, transparent model: each month we mint a base RP pool and split by allocations.
+// You can tune BASE_RP and DEF_SCALE as you like.
+const BASE_RP = 160;                // ~ modest lab throughput per month
+const DEF_SCALE = 0.04;             // a little defense progress from sustained focus
+if (gameState.sdiPlan.selected.length) {
+  let awarded = 0;
+  gameState.sdiPlan.selected.forEach(id => {
+    const percent = clamp(gameState.sdiPlan.allocations[id]||0, 0, 100);
+    const rp = Math.round(BASE_RP * (percent/100));
+    awarded += rp;
+    // feed your global RP pool
+    gameState.research = clamp(gameState.research + rp, 0, gameState.maxResearch);
+    // incremental defense maturity from directed effort
+    gameState.defense = clamp(gameState.defense + DEF_SCALE * (percent/100)*100, 0, 100);
+  });
+  addMessage(`R&D allocated via SDI plan: +${awarded} RP this month.`, '');
+} else {
+  // no plan? small default trickle
+  gameState.research = clamp(gameState.research + 40, 0, gameState.maxResearch);
+}
+
+      
     // If FRUS docs indexed for this month, show NSA brief
     const key = `${gameState.year}-${String(gameState.month).padStart(2,'0')}`;
     const docs = (_decisionsByMonth && _decisionsByMonth.get(key)) || [];
@@ -1774,7 +2018,8 @@ const END_FRAME = { y: 1988, m: 12 }; // end of scenario
       const docs = _decisionsByMonth.get(key) || [];
       if (docs.length) {
         // Prefer ABM/SDI/Congress/military documents (weighting)
-        const weight = (x)=>(x.isABM?4:0)+(x.isBudget?3:0)+(x.isReyk?3:0)+(x.isService?2:0)+(x.isTech?1:0);
+        const weight = (x)=>(x.isABM?4:0)+(x.isBudget?3:0)+(x.isReyk?3:0)+(x.isService?2:0)+(x.isTech?1:0)+(x.isMX?3:0);
+
         const top = docs.slice().sort((a,b)=>weight(b)-weight(a))[0];
         const dec = buildDecision(top);
         triggerDecision({
@@ -1821,6 +2066,7 @@ const END_FRAME = { y: 1988, m: 12 }; // end of scenario
 
 </body>
 </html>
+
 
 
 
