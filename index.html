@@ -339,7 +339,46 @@
             border-left-color: #4a7c59;
             background: #e8f4e8;
         }
-        
+
+        .gorbachev-panel {
+            margin-top: 20px;
+            background: #faf8f3;
+            border: 2px solid #8b3a21;
+            padding: 15px;
+            box-shadow: 0 2px 6px rgba(139, 58, 33, 0.15);
+        }
+
+        .gorbachev-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #8b3a21;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .gorbachev-portrait {
+            width: 100%;
+            border: 1px solid #d4c5a2;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+            margin-bottom: 10px;
+            object-fit: cover;
+            max-height: 220px;
+        }
+
+        .gorbachev-caption {
+            font-size: 0.9em;
+            color: #2c1810;
+            margin-bottom: 6px;
+        }
+
+        .gorbachev-credit {
+            font-size: 0.75em;
+            color: #5c4033;
+            font-style: italic;
+        }
+
         .threat-indicator {
             position: fixed;
             top: 20px;
@@ -606,8 +645,15 @@
                 <div class="message-log" id="messageLog">
                     <div class="message">System initialized. Awaiting orders...</div>
                 </div>
+
+                <div class="gorbachev-panel" id="gorbachevPanel">
+                    <div class="gorbachev-title">Soviet Leadership Briefing</div>
+                    <img id="gorbachevImage" class="gorbachev-portrait" src="" alt="Intelligence photo of Mikhail Gorbachev">
+                    <div class="gorbachev-caption" id="gorbachevCaption"></div>
+                    <div class="gorbachev-credit" id="gorbachevCredit"></div>
+                </div>
             </div>
-            
+
             <div class="sidebar">
                 <h3>
 PROGRAM STATUS
@@ -715,6 +761,32 @@ gameState.sdiPlan = {
   lastAppliedM: 0
 };
 
+const gorbachevGallery = [
+  {
+    id: 'default',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/7/70/President_Ronald_Reagan_and_Mikhail_Gorbachev_at_the_Soviet_Ambassador%E2%80%99s_Residence%2C_Geneva%2C_Switzerland.jpg',
+    alt: 'President Reagan and General Secretary Mikhail Gorbachev meeting during the Geneva Summit in 1985.',
+    caption: 'Geneva Summit, November 1985 — President Reagan confers with General Secretary Mikhail Gorbachev at the Soviet Ambassador’s residence.',
+    credit: 'Ronald Reagan Presidential Library (Public Domain)'
+  },
+  {
+    id: 'reykjavik',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/6/6e/Reagan_and_Gorbachev_hold_discussions.jpg',
+    alt: 'Mikhail Gorbachev and Ronald Reagan seated across a small table during the Reykjavik Summit talks in 1986.',
+    caption: 'Reykjavik Summit, October 1986 — Gorbachev presses his sweeping disarmament proposal as Reykjavik talks stretch into the night.',
+    credit: 'Ronald Reagan Presidential Library (Public Domain)'
+  },
+  {
+    id: 'portrait',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/4/49/Mikhail_Gorbachev_1984.jpg',
+    alt: 'Portrait of Mikhail Gorbachev in 1984 wearing a dark suit and tie.',
+    caption: 'Mikhail Gorbachev, 1984 — Rising within the Soviet leadership on the eve of the Geneva Summit.',
+    credit: 'Bundesarchiv, Bild 183-1984-0611-023 / CC-BY-SA 3.0'
+  }
+];
+
+let lastGorbachevImageId = null;
+
 // Helper: in-place clamp
 function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
 
@@ -759,6 +831,7 @@ const decisions = [
     year:1986,
     title:'Reykjavik Summit Crisis',
     text:'General Secretary Gorbachev proposes elimination of all ballistic missiles contingent on SDI laboratory restriction for 10 years. President Reagan must respond.',
+    imageKey:'reykjavik',
     options:[
       { text:'Accept laboratory limitations - Historic arms reduction', effects:{ political:25, defense:-20, research:-300 } },
       { text:'Reject Soviet proposal - Preserve SDI development', effects:{ political:-10, defense:15, research:100 } }
@@ -786,6 +859,7 @@ function startGame() {
   renderTechnologies();
   wireRDPanel();    // <-- NEW: build allocation UI hooks
   updateUI();
+  displayGorbachevImage('default');
   addMessage('SDI Program activated per Presidential directive', 'success');
   addMessage('Initial appropriation: $3.8 billion (FY1985)', '');
 
@@ -964,6 +1038,10 @@ function triggerDecision(decision) {
     button.onclick = () => makeDecision(index);
     optionsDiv.appendChild(button);
   });
+
+  if (decision.imageKey) {
+    displayGorbachevImage(decision.imageKey);
+  }
 
   addMessage(`PRIORITY: ${decision.title}`, 'critical');
 }
@@ -1180,7 +1258,36 @@ function updateUI() {
   updateRDPoolUI();
 }
 
-// Message System (unchanged)
+function displayGorbachevImage(preferredId) {
+  const panel = document.getElementById('gorbachevPanel');
+  if (!panel || !Array.isArray(gorbachevGallery) || !gorbachevGallery.length) return;
+
+  let entry = preferredId ? gorbachevGallery.find(img => img.id === preferredId) : undefined;
+  if (!entry) {
+    const pool = gorbachevGallery.filter(img => img.id !== lastGorbachevImageId);
+    entry = pool.length ? pool[Math.floor(Math.random() * pool.length)] : gorbachevGallery[0];
+  }
+  if (!entry) return;
+
+  const imgEl = document.getElementById('gorbachevImage');
+  const captionEl = document.getElementById('gorbachevCaption');
+  const creditEl = document.getElementById('gorbachevCredit');
+  if (imgEl) {
+    imgEl.src = entry.url;
+    imgEl.alt = entry.alt;
+  }
+  if (captionEl) captionEl.textContent = entry.caption;
+  if (creditEl) creditEl.textContent = entry.credit;
+
+  lastGorbachevImageId = entry.id;
+}
+
+function spotlightGorbachevFromMessage(text) {
+  if (!text || !/gorbachev/i.test(text)) return;
+  displayGorbachevImage();
+}
+
+// Message System with Gorbachev spotlight
 function addMessage(text, type = '') {
   const log = document.getElementById('messageLog');
   const message = document.createElement('div');
@@ -1193,6 +1300,8 @@ function addMessage(text, type = '') {
   while (log.children.length > 8) {
     log.removeChild(log.lastChild);
   }
+
+  spotlightGorbachevFromMessage(text);
 }
 
 // Utility
