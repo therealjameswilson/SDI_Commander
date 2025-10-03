@@ -935,8 +935,8 @@ const decisions = [
     imageKey:'reykjavik',
     options:[
       { text:'Accept laboratory limitations - Historic arms reduction', effects:{ political:25, defense:-20, research:-300 } },
-      { text:'Reject Soviet proposal - Preserve SDI development', effects:{ political:-10, defense:15, research:100 } }
-        { text: 'Advise President to postpone Reykjavik pending ABM clarification', effects: { political: -5, research: +40, defense: +4 } }
+      { text:'Reject Soviet proposal - Preserve SDI development', effects:{ political:-10, defense:15, research:100 } },
+      { text:'Advise President to postpone Reykjavik pending ABM clarification', effects:{ political:-5, research:40, defense:4 } }
     ]
   },
   {
@@ -1524,11 +1524,18 @@ function openSdiPlanner(){
 }
 
 // Wire open buttons
-document.getElementById('openPlannerBtn')?.addEventListener('click', openSdiPlanner);
-document.getElementById('openMXBtn')?.addEventListener('click', ()=>{
-  const pane = document.getElementById('mxPane');
-  if (pane) pane.style.display = (pane.style.display==='none' ? 'block' : 'none');
-});
+const openPlannerBtn = document.getElementById('openPlannerBtn');
+if (openPlannerBtn) {
+  openPlannerBtn.addEventListener('click', openSdiPlanner);
+}
+
+const openMXBtn = document.getElementById('openMXBtn');
+if (openMXBtn) {
+  openMXBtn.addEventListener('click', () => {
+    const pane = document.getElementById('mxPane');
+    if (pane) pane.style.display = (pane.style.display === 'none' ? 'block' : 'none');
+  });
+}
 
     
 </script>
@@ -1734,7 +1741,10 @@ document.getElementById('openMXBtn')?.addEventListener('click', ()=>{
         if (!_tei.querySelector('TEI, tei\\:TEI')) continue;
         indexFRUS();
         // Badge on
-        let docs=0; for(const arr of _decisionsByMonth.values()) docs += (arr?.length||0);
+        let docs = 0;
+        for (const arr of _decisionsByMonth.values()) {
+          docs += (arr && arr.length) ? arr.length : 0;
+        }
         setFrusBadge(true, `${docs} FRUS docs across ${_decisionsByMonth.size} months`);
         addMessage('FRUS XML loaded. Monthly NSA briefs enabled.', 'success');
         return;
@@ -1794,8 +1804,6 @@ document.getElementById('openMXBtn')?.addEventListener('click', ()=>{
         const isTech=/HOE\b|MIRACL|ERIS\b|Brilliant Pebbles|Neutral Particle Beam|Excalibur|X-?Ray|boost|midcourse|terminal|discrimination|sensor/i.test(full);
         const isMX = /\bMX\b|\bPeacekeeper\b|\bMidgetman\b|basing|rail garrison|dense pack|multiple protective shelters|\bMPS\b|silo\b|road-?mobile/i.test(full);
 
-return { id, title, year, month, full, money, isABM, isReyk, isBudget, isService, isTech, isMX, quote, node: d };
-
         // choose an excerpt paragraph
         let quote = '';
         for (const p of d.querySelectorAll('p')) {
@@ -1807,7 +1815,7 @@ return { id, title, year, month, full, money, isABM, isReyk, isBudget, isService
         }
         if (!quote) quote = full.slice(0, 500);
 
-        return { id, title, year, month, full, money, isABM, isReyk, isBudget, isService, isTech, isMX, quote };
+        return { id, title, year, month, full, money, isABM, isReyk, isBudget, isService, isTech, isMX, quote, node: d };
       })
       .filter(x => x.year && x.month && inRange(x.year, x.month));
 
